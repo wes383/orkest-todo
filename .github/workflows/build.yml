@@ -1,11 +1,8 @@
 # Automatic builds for Orkest Todo.
 #
-# One job, three outcomes:
-#   push to main / a pull request → build on all three platforms, upload the
-#                                   installers as workflow artifacts
-#   push a `v*` tag               → the same, plus a DRAFT GitHub release with
-#                                   the installers attached
-#   manual run (Actions → Run)    → same as a branch push
+# A run starts on a `v*` tag push and nothing else — ordinary commits and pull
+# requests build nothing. Every run attaches the installers to a DRAFT GitHub
+# release, so nothing goes public until you publish it yourself.
 #
 # macOS builds are unsigned (no signing certificate in this repo), so the first
 # launch needs right-click → Open.
@@ -14,13 +11,12 @@ name: Build
 
 on:
   push:
-    branches: [main, master]
     tags: ["v*"]
-  pull_request:
-    branches: [main, master]
+  # Manual "Run workflow" button in the Actions tab. Delete this key if tag
+  # pushes should be the only way a build can start.
   workflow_dispatch:
 
-# A newer push to the same branch makes the older run pointless.
+# A newer run of the same ref makes the older one pointless.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -91,8 +87,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # Empty on a branch push — that is how tauri-action is told to build
-          # without touching releases.
+          # On a `v*` tag this is the tag name. On a manual run started from a
+          # branch it is empty, which is how tauri-action is told to build
+          # without touching any release.
           tagName: "${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}"
           releaseName: "${{ startsWith(github.ref, 'refs/tags/v') && format('Orkest Todo {0}', github.ref_name) || '' }}"
           releaseBody: |
@@ -117,6 +114,8 @@ jobs:
           # those downloads often enough to be worth retrying.
           retryAttempts: 2
 
+      # Kept alongside the release assets: it is how a manual run hands over its
+      # installers, since that run has no release to attach them to.
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
