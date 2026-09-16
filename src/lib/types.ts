@@ -1,0 +1,158 @@
+/**
+ * Domain types for the Orkest Todo app.
+ */
+
+import type { MessageKey } from "@/lib/messages";
+
+export type Priority = "urgent" | "high" | "medium" | "low";
+
+export interface Subtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+export interface Todo {
+  id: string;
+  title: string;
+  notes: string;
+  done: boolean;
+  /** Pinned to the "已加星" smart view. */
+  starred: boolean;
+  priority: Priority;
+  /** Local calendar date, `YYYY-MM-DD`. `null` = no due date. */
+  dueDate: string | null;
+  listId: string;
+  tags: string[];
+  subtasks: Subtask[];
+  createdAt: number;
+  completedAt: number | null;
+}
+
+export interface TodoList {
+  id: string;
+  name: string;
+  /** Key into the Orkest 19-color project palette. */
+  color: PaletteName;
+}
+
+export type PaletteName =
+  | "red"
+  | "orange"
+  | "amber"
+  | "yellow"
+  | "lime"
+  | "green"
+  | "emerald"
+  | "teal"
+  | "cyan"
+  | "sky"
+  | "blue"
+  | "indigo"
+  | "violet"
+  | "purple"
+  | "fuchsia"
+  | "pink"
+  | "rose"
+  | "gray"
+  | "slate";
+
+export const PALETTE: PaletteName[] = [
+  "red",
+  "orange",
+  "amber",
+  "yellow",
+  "lime",
+  "green",
+  "emerald",
+  "teal",
+  "cyan",
+  "sky",
+  "blue",
+  "indigo",
+  "violet",
+  "purple",
+  "fuchsia",
+  "pink",
+  "rose",
+  "gray",
+  "slate",
+];
+
+/** Smart views are derived from the todo set, not stored on the todo. */
+export type ViewId =
+  | "all"
+  | "today"
+  | "upcoming"
+  | "overdue"
+  | "starred"
+  | "completed";
+
+export const VIEW_ORDER: ViewId[] = [
+  "all",
+  "today",
+  "upcoming",
+  "overdue",
+  "starred",
+  "completed",
+];
+
+export type StatusFilter = "all" | "active" | "completed";
+export type SortKey = "due" | "priority" | "created" | "title";
+
+export interface PriorityMeta {
+  /**
+   * Message keys, not strings. A priority is named in the filter chips, the
+   * card badge, the card's "set priority" submenu and the editor's select, and
+   * every one of those renders through `t` — so the dictionary has to be the
+   * single owner of the wording, here as anywhere else.
+   *
+   * `keyof typeof zh` is checked against the dictionary, so a renamed message
+   * breaks the build instead of silently printing the key.
+   */
+  labelKey: MessageKey;
+  shortKey: MessageKey;
+  /** Badge variant from `components/ui/badge`. */
+  badge: "danger" | "warning" | "info" | "secondary";
+  /** CSS var holding the accent color for this priority. */
+  cssVar: string;
+  rank: number;
+}
+
+export const PRIORITY_META: Record<Priority, PriorityMeta> = {
+  urgent: {
+    labelKey: "priority.urgent",
+    shortKey: "priority.urgent.short",
+    badge: "danger",
+    cssVar: "--red",
+    rank: 0,
+  },
+  high: {
+    labelKey: "priority.high",
+    shortKey: "priority.high.short",
+    badge: "warning",
+    cssVar: "--orange",
+    rank: 1,
+  },
+  medium: {
+    labelKey: "priority.medium",
+    shortKey: "priority.medium.short",
+    badge: "info",
+    cssVar: "--blue",
+    rank: 2,
+  },
+  low: {
+    labelKey: "priority.low",
+    shortKey: "priority.low.short",
+    badge: "secondary",
+    cssVar: "--foreground-subtle",
+    rank: 3,
+  },
+};
+
+export const PRIORITY_ORDER: Priority[] = ["urgent", "high", "medium", "low"];
+
+/** `var(--color-*)` for a palette name — used for list dots and tag chips. */
+export function paletteVar(name: PaletteName): string {
+  return `var(--color-${name})`;
+}

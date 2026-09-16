@@ -1,0 +1,134 @@
+# Automatic builds for Orkest Todo.
+#
+# One job, three outcomes:
+#   push to main / a pull request → build on all three platforms, upload the
+#                                   installers as workflow artifacts
+#   push a `v*` tag               → the same, plus a DRAFT GitHub release with
+#                                   the installers attached
+#   manual run (Actions → Run)    → same as a branch push
+#
+# macOS builds are unsigned (no signing certificate in this repo), so the first
+# launch needs right-click → Open.
+
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # tauri-action creates the release when a tag is pushed
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      # One platform failing should not hide the other two's results.
+      fail-fast: false
+      matrix:
+        # Only need Windows? Delete the ubuntu and macos rows.
+        include:
+          - platform: ubuntu-22.04
+            label: linux-x64
+          - platform: windows-latest
+            label: windows-x64
+          # macos-latest is arm64, so this dmg only runs on Apple Silicon. For a
+          # single universal dmg, give this row
+          # `args: --target universal-apple-darwin` and add a
+          # `rustup target add aarch64-apple-darwin x86_64-apple-darwin` step.
+          - platform: macos-latest
+            label: macos-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri's Linux prerequisites. `rpm` is in the list because
+      # `bundle.targets` is "all", which on Linux means deb + rpm + AppImage.
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl wget file patchelf rpm \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev
+
+      # Before setup-node: its `cache: pnpm` needs pnpm on PATH. The major is
+      # pinned to match the lockfile's writer (pnpm 11, lockfileVersion 9.0) —
+      # bump it together with your local pnpm, not independently.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `beforeBuildCommand` is `pnpm build`, i.e. `tsc && vite build`, so a
+      # type error fails the job here instead of shipping a broken bundle.
+      - name: Build app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Empty on a branch push — that is how tauri-action is told to build
+          # without touching releases.
+          tagName: "${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}"
+          releaseName: "${{ startsWith(github.ref, 'refs/tags/v') && format('Orkest Todo {0}', github.ref_name) || '' }}"
+          releaseBody: |
+            Download the installer for your platform below.
+
+            - **Windows** — `.msi` or the `.exe` setup
+            - **macOS** — `.dmg` (Apple Silicon)
+            - **Linux** — `.deb`, `.rpm` or `.AppImage`
+
+            The builds are unsigned, so macOS and SmartScreen may both complain
+            about an unknown developer on first launch.
+          # The per-platform hook for extra `tauri build` flags. Unset on every
+          # row today, which resolves to no extra arguments.
+          args: ${{ matrix.args }}
+          releaseDraft: true
+          prerelease: false
+          # This app has no `tauri-plugin-updater`, so there is no updater
+          # manifest to hand out — and generating one from bundles that carry no
+          # signatures would only produce a broken `latest.json`.
+          uploadUpdaterJson: false
+          # The build fetches WiX / NSIS / AppImage tooling; CI networks drop
+          # those downloads often enough to be worth retrying.
+          retryAttempts: 2
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: orkest-todo-${{ matrix.label }}
+          if-no-files-found: error
+          retention-days: 14
+          # Installers only, not the raw `.app` — its bundle symlinks do not
+          # survive a zip round-trip intact.
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
