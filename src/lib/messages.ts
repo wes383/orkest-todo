@@ -108,6 +108,7 @@ const zh = {
 
   /* ── Sidebar ─────────────────────────────────────────────── */
   "sidebar.sectionViews": "视图",
+  "sidebar.hideView": "隐藏视图",
   "sidebar.sectionLists": "清单",
   "sidebar.newList": "新建清单",
   "sidebar.allLists": "所有清单",
@@ -181,6 +182,9 @@ const zh = {
   "toolbar.status.all": "全部",
   "toolbar.status.active": "进行中",
   "toolbar.status.completed": "已完成",
+  "blank.filterStatus": "筛选状态",
+  "blank.filterPriority": "筛选优先级",
+  "blank.filterTag": "筛选标签",
   "toolbar.filterAria": "筛选",
   "toolbar.filter": "筛选",
   "toolbar.clearAllFilters": "清除全部筛选",
@@ -533,6 +537,7 @@ const en: Record<MessageKey, Message> = {
 
   /* ── Sidebar ─────────────────────────────────────────────── */
   "sidebar.sectionViews": "Views",
+  "sidebar.hideView": "Hide view",
   "sidebar.sectionLists": "Lists",
   "sidebar.newList": "New list",
   "sidebar.allLists": "All lists",
@@ -607,6 +612,9 @@ const en: Record<MessageKey, Message> = {
   "toolbar.status.all": "All",
   "toolbar.status.active": "Active",
   "toolbar.status.completed": "Completed",
+  "blank.filterStatus": "Filter by status",
+  "blank.filterPriority": "Filter by priority",
+  "blank.filterTag": "Filter by tag",
   "toolbar.filterAria": "Filters",
   "toolbar.filter": "Filter",
   "toolbar.clearAllFilters": "Clear all filters",

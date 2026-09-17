@@ -1,4 +1,4 @@
-import type { Priority } from "@/lib/types";
+import { MAX_TAG_LENGTH, type Priority } from "@/lib/types";
 
 /**
  * Quick-add syntax. `p1`…`p4` map onto the four priorities, one-based because
@@ -75,7 +75,19 @@ export function tokenizeQuickInput(raw: string): QuickToken[] {
 
     const body = match[2];
     if (body.startsWith("#")) {
-      tokens.push({ kind: "tag", text: body, tag: body.slice(1) });
+      /*
+       * An over-long tag demotes to plain text rather than being truncated or
+       * silently shortened: both the mirror layer and `parseQuickInput` read
+       * this one scan, so a demotion here paints the words as ordinary text
+       * *and* saves them into the title — the token never looks accepted and
+       * then saves differently, which is the one inconsistency this shared
+       * scan exists to prevent.
+       */
+      if (body.length - 1 > MAX_TAG_LENGTH) {
+        pushText(body);
+      } else {
+        tokens.push({ kind: "tag", text: body, tag: body.slice(1) });
+      }
     } else if (prioritySeen) {
       pushText(body);
     } else {

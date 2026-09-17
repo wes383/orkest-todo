@@ -33,6 +33,7 @@ import { FocusStats } from "@/components/focus/focus-stats";
 import { SettingsView } from "@/components/settings/settings-view";
 import { Sidebar } from "@/components/todo/sidebar";
 import { Toolbar } from "@/components/todo/toolbar";
+import { BlankAreaMenu } from "@/components/todo/blank-area-menu";
 import { QuickAdd, type QuickAddHandle } from "@/components/todo/quick-add";
 import { TodoItem } from "@/components/todo/todo-item";
 import {
@@ -582,6 +583,7 @@ export default function App() {
           onSelectStats={() => setScreen("stats")}
           onSelectSettings={() => setScreen("settings")}
           onSelectView={selectView}
+          onHideView={(view) => setViewVisible(view, false)}
           onSelectList={selectList}
           onCreateList={() => {
             setEditingList(null);
@@ -674,7 +676,13 @@ export default function App() {
           </header>
 
           {/* Body */}
-          <ScrollArea className="flex-1">
+          <BlankAreaMenu
+            filters={filters}
+            tags={tags}
+            onChange={patchFilters}
+            onCreate={openCreate}
+          >
+            <ScrollArea className="flex-1">
             <div className="mx-auto flex w-full max-w-[880px] flex-col gap-5 px-8 py-5">
               <QuickAdd
                 ref={quickAddRef}
@@ -800,7 +808,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          </ScrollArea>
+            </ScrollArea>
+          </BlankAreaMenu>
         </main>
         )}
       </div>

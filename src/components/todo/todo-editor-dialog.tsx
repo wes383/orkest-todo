@@ -37,6 +37,7 @@ import type { TodoDraft } from "@/lib/store";
 import {
   PRIORITY_META,
   PRIORITY_ORDER,
+  MAX_TAG_LENGTH,
   TITLE_MAX,
   paletteVar,
   type Priority,
@@ -148,7 +149,12 @@ export function TodoEditorDialog({
 
   const addTag = () => {
     const value = tagInput.trim().replace(/^#/, "");
-    if (!value || form.tags.includes(value)) return;
+    // Unreachable through the field itself (`maxLength` stops typing at the
+    // cap), but a pasted `#name` that trims longer than one tag allows is
+    // refused rather than stored over the limit.
+    if (!value || value.length > MAX_TAG_LENGTH || form.tags.includes(value)) {
+      return;
+    }
     patch({ tags: [...form.tags, value] });
     setTagInput("");
   };
@@ -462,6 +468,13 @@ export function TodoEditorDialog({
               <Input
                 id="todo-tags"
                 value={tagInput}
+                /*
+                 * One more than the tag cap, so a leading `#` typed by hand
+                 * never eats into the 30 characters the tag itself gets; the
+                 * real cap is enforced again on the stripped value in
+                 * `addTag`, which is the only thing that can commit one.
+                 */
+                maxLength={MAX_TAG_LENGTH + 1}
                 placeholder={t("editor.tagsPlaceholder")}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => {

@@ -61,6 +61,10 @@ const DropdownMenuSubContent = React.forwardRef<
     ref={ref}
     className={cn(
       "z-dropdown min-w-48 overflow-hidden bg-surface border border-border rounded-lg shadow-pop p-1",
+      // Same ceiling as the ContextMenu twin: submenus grow with the data
+      // (tags, priorities) and must scroll rather than run off-screen.
+      // `overflow-y-auto` keeps the x axis clipped while y scrolls.
+      "max-h-72 overflow-y-auto",
       // Use Radix data-state + CSS transition for enter/exit animation.
       // Avoid keyframe animations because their transform conflicts with
       // Radix's transform-based content positioning, causing misplacement on open.

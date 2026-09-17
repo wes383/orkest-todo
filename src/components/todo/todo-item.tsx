@@ -17,6 +17,17 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -71,6 +82,33 @@ const dueToneClass: Record<string, string> = {
 const revealOnHover =
   "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
+/**
+ * The action menu exists twice — once hanging off the ⋯ button, once on a
+ * right-click anywhere on the card — and it must never grow two different
+ * vocabularies. Each Radix family has its own Item/Sub/… components (they read
+ * their Root through context), so the content is written once against a *parts*
+ * object and the caller supplies whichever family renders it.
+ */
+const dropdownParts = {
+  Item: DropdownMenuItem,
+  Sub: DropdownMenuSub,
+  SubTrigger: DropdownMenuSubTrigger,
+  SubContent: DropdownMenuSubContent,
+  Label: DropdownMenuLabel,
+  Separator: DropdownMenuSeparator,
+};
+
+const contextParts = {
+  Item: ContextMenuItem,
+  Sub: ContextMenuSub,
+  SubTrigger: ContextMenuSubTrigger,
+  SubContent: ContextMenuSubContent,
+  Label: ContextMenuLabel,
+  Separator: ContextMenuSeparator,
+};
+
+type MenuParts = typeof dropdownParts;
+
 export function TodoItem({
   todo,
   list,
@@ -104,6 +142,76 @@ export function TodoItem({
    * changes.
    */
   const due = todo.dueDate && tone ? { date: todo.dueDate, tone } : null;
+
+  /** The whole action menu, written once against whichever Radix family's
+      parts are handed in — the ⋯ dropdown and the right-click menu render the
+      identical set, and can never drift apart. */
+  const menuItems = (M: MenuParts) => (
+    <>
+      <M.Item onSelect={onEdit}>
+        <Icon icon={Pencil} size="sm" />
+        {t("todo.edit")}
+      </M.Item>
+      <M.Item onSelect={onDuplicate}>
+        <Icon icon={Copy} size="sm" />
+        {t("todo.duplicate")}
+      </M.Item>
+      <M.Item onSelect={onStar}>
+        <Icon icon={Star} size="sm" />
+        {todo.starred ? t("todo.unstar") : t("todo.star")}
+      </M.Item>
+
+      <M.Separator />
+
+      <M.Sub>
+        <M.SubTrigger>
+          <CircleDashed className="h-4 w-4" aria-hidden="true" />
+          {t("common.priority")}
+        </M.SubTrigger>
+        <M.SubContent>
+          {PRIORITY_ORDER.map((p) => (
+            <M.Item key={p} onSelect={() => onSetPriority(p)}>
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: `var(${PRIORITY_META[p].cssVar})` }}
+              />
+              {t(PRIORITY_META[p].labelKey)}
+            </M.Item>
+          ))}
+        </M.SubContent>
+      </M.Sub>
+
+      <M.Sub>
+        <M.SubTrigger>
+          <CalendarDays className="h-4 w-4" aria-hidden="true" />
+          {t("common.dueDate")}
+        </M.SubTrigger>
+        <M.SubContent>
+          <M.Label>{t("todo.duePresets")}</M.Label>
+          <M.Item onSelect={() => onSetDue(todayISO())}>
+            {t("date.today")}
+          </M.Item>
+          <M.Item onSelect={() => onSetDue(addDays(todayISO(), 1))}>
+            {t("date.tomorrow")}
+          </M.Item>
+          <M.Item onSelect={() => onSetDue(addDays(todayISO(), 7))}>
+            {t("date.inWeek")}
+          </M.Item>
+          <M.Separator />
+          <M.Item onSelect={() => onSetDue(null)}>
+            {t("todo.clearDueDate")}
+          </M.Item>
+        </M.SubContent>
+      </M.Sub>
+
+      <M.Separator />
+
+      <M.Item variant="destructive" onSelect={onDelete}>
+        <Icon icon={Trash2} size="sm" />
+        {t("todo.delete")}
+      </M.Item>
+    </>
+  );
 
   /**
    * The meta row states two different kinds of fact, and they used to share one
@@ -174,282 +282,230 @@ export function TodoItem({
   const hasMetaRow = hasPriority || due !== null || metaGroups.length > 0;
 
   return (
-    <Card
-      className={cn(
-        "group relative",
-        todo.done && "opacity-55",
-        expanded && "border-border-strong"
-      )}
-    >
-      {/* Priority rail — the row's only always-on color signal */}
-      <span
-        aria-hidden="true"
-        className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full"
-        style={{
-          backgroundColor: `var(${priority.cssVar})`,
-          opacity: todo.priority === "low" ? 0.35 : 1,
-        }}
-      />
-
-      <div className="flex items-start gap-3 p-4 pl-5 pr-3">
-        <Checkbox
-          checked={todo.done}
-          onCheckedChange={onToggle}
-          aria-label={
-            todo.done
-              ? t("todo.markIncomplete", { title: todo.title })
-              : t("todo.markComplete", { title: todo.title })
-          }
-          className="mt-0.5 h-5 w-5 rounded-full"
-        />
-
-        <button
-          type="button"
-          onClick={() => hasDetail && setExpanded((v) => !v)}
-          aria-expanded={hasDetail ? expanded : undefined}
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <Card
+          onContextMenu={(e) => e.stopPropagation()}
           className={cn(
-            "min-w-0 flex-1 text-left",
-            hasDetail ? "cursor-pointer" : "cursor-default"
+            "group relative",
+            todo.done && "opacity-55",
+            expanded && "border-border-strong"
           )}
         >
-          <div className="flex items-start gap-2">
-            {hasDetail && (
-              <Icon
-                icon={ChevronRight}
-                size="sm"
-                className={cn(
-                  "mt-1 text-foreground-subtle transition-transform duration-base ease-out",
-                  expanded && "rotate-90"
-                )}
-              />
-            )}
-            <span
+          {/* Priority rail — the row's only always-on color signal */}
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full"
+            style={{
+              backgroundColor: `var(${priority.cssVar})`,
+              opacity: todo.priority === "low" ? 0.35 : 1,
+            }}
+          />
+
+          <div className="flex items-start gap-3 p-4 pl-5 pr-3">
+            <Checkbox
+              checked={todo.done}
+              onCheckedChange={onToggle}
+              aria-label={
+                todo.done
+                  ? t("todo.markIncomplete", { title: todo.title })
+                  : t("todo.markComplete", { title: todo.title })
+              }
+              className="mt-0.5 h-5 w-5 rounded-full"
+            />
+
+            <button
+              type="button"
+              onClick={() => hasDetail && setExpanded((v) => !v)}
+              aria-expanded={hasDetail ? expanded : undefined}
               className={cn(
-                "text-base leading-snug",
-                todo.done && "text-foreground-muted line-through decoration-1"
+                "min-w-0 flex-1 text-left",
+                // Pointer everywhere on the card's text area, expanded or not:
+                // the card still answers a click (it can be right-clicked into
+                // its action menu), so a plain cursor would read as inert.
+                "cursor-pointer"
               )}
             >
-              {todo.title}
-            </span>
-          </div>
-
-          {/* Meta row — state as tinted pills, metadata as one muted run */}
-          {hasMetaRow && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5">
-              {hasPriority && (
-                <Badge variant={priority.badge} size="sm">
-                  {t(priority.shortKey)}
-                </Badge>
-              )}
-
-              {due && (
+              <div className="flex items-start gap-2">
+                {hasDetail && (
+                  <Icon
+                    icon={ChevronRight}
+                    size="sm"
+                    className={cn(
+                      "mt-1 text-foreground-subtle transition-transform duration-base ease-out",
+                      expanded && "rotate-90"
+                    )}
+                  />
+                )}
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium",
-                    dueToneClass[due.tone]
+                    "text-base leading-snug",
+                    todo.done && "text-foreground-muted line-through decoration-1"
                   )}
                 >
-                  <CalendarClock className="h-3 w-3" aria-hidden="true" />
-                  {dueLabel(due.date, language)}
-                </span>
-              )}
-
-              {metaGroups.length > 0 && (
-                <span className="ml-0.5 inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground-subtle">
-                  {metaGroups.map((group, i) => (
-                    <Fragment key={i}>
-                      {i > 0 && (
-                        <span aria-hidden="true" className="text-foreground-faint">
-                          ·
-                        </span>
-                      )}
-                      {group}
-                    </Fragment>
-                  ))}
-                </span>
-              )}
-            </div>
-          )}
-        </button>
-
-        {/*
-         * Row actions — `self-center` overrides the row's `items-start`.
-         *
-         * The checkbox stays pinned to the title's first line (that is what a
-         * checkbox next to wrapped text should do), but the action cluster is
-         * not tied to any line of text: it belongs to the card as a whole, so
-         * it centres against whatever height the title + meta row produce.
-         */}
-        <div className="flex shrink-0 items-center gap-0.5 self-center">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={todo.starred ? t("todo.unstar") : t("todo.star")}
-                aria-pressed={todo.starred}
-                onClick={onStar}
-                className={cn(
-                  todo.starred ? "text-yellow" : `text-foreground-subtle ${revealOnHover}`
-                )}
-              >
-                <Icon
-                  icon={Star}
-                  size="sm"
-                  className={todo.starred ? "fill-current" : undefined}
-                />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {todo.starred ? t("todo.unstar") : t("todo.star")}
-            </TooltipContent>
-          </Tooltip>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("todo.actions")}
-                className={cn("text-foreground-subtle", revealOnHover)}
-              >
-                <Icon icon={MoreHorizontal} size="sm" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={onEdit}>
-                <Icon icon={Pencil} size="sm" />
-                {t("todo.edit")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onDuplicate}>
-                <Icon icon={Copy} size="sm" />
-                {t("todo.duplicate")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onStar}>
-                <Icon icon={Star} size="sm" />
-                {todo.starred ? t("todo.unstar") : t("todo.star")}
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <CircleDashed className="h-4 w-4" aria-hidden="true" />
-                  {t("common.priority")}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {PRIORITY_ORDER.map((p) => (
-                    <DropdownMenuItem key={p} onSelect={() => onSetPriority(p)}>
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: `var(${PRIORITY_META[p].cssVar})` }}
-                      />
-                      {t(PRIORITY_META[p].labelKey)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <CalendarDays className="h-4 w-4" aria-hidden="true" />
-                  {t("common.dueDate")}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuLabel>{t("todo.duePresets")}</DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={() => onSetDue(todayISO())}>
-                    {t("date.today")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onSetDue(addDays(todayISO(), 1))}>
-                    {t("date.tomorrow")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onSetDue(addDays(todayISO(), 7))}>
-                    {t("date.inWeek")}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => onSetDue(null)}>
-                    {t("todo.clearDueDate")}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-                <Icon icon={Trash2} size="sm" />
-                {t("todo.delete")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Expanded detail */}
-      {expanded && hasDetail && (
-        <div className="animate-fade-in border-t border-border py-4 pl-[3.25rem] pr-5">
-          {todo.notes && (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground-muted">
-              {todo.notes}
-            </p>
-          )}
-
-          {todo.subtasks.length > 0 && (
-            <div className={cn(todo.notes && "mt-4")}>
-              <div className="mb-3 flex items-center gap-3">
-                <Progress
-                  value={subProgress}
-                  variant="thin"
-                  className="flex-1"
-                  color={subProgress === 100 ? "bg-green" : "bg-accent"}
-                />
-                <span className="font-mono text-xs tabular-nums text-foreground-subtle">
-                  {subProgress}%
+                  {todo.title}
                 </span>
               </div>
-              <ul className="flex flex-col gap-1">
-                {todo.subtasks.map((sub) => (
-                  <li key={sub.id} className="flex items-center gap-2.5 py-0.5">
-                    <Checkbox
-                      checked={sub.done}
-                      onCheckedChange={() => onToggleSubtask(sub.id)}
-                      aria-label={sub.title}
-                    />
+
+              {/* Meta row — state as tinted pills, metadata as one muted run */}
+              {hasMetaRow && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5">
+                  {hasPriority && (
+                    <Badge variant={priority.badge} size="sm">
+                      {t(priority.shortKey)}
+                    </Badge>
+                  )}
+
+                  {due && (
                     <span
                       className={cn(
-                        "text-sm",
-                        sub.done && "text-foreground-subtle line-through"
+                        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium",
+                        dueToneClass[due.tone]
                       )}
                     >
-                      {sub.title}
+                      <CalendarClock className="h-3 w-3" aria-hidden="true" />
+                      {dueLabel(due.date, language)}
                     </span>
-                  </li>
-                ))}
-              </ul>
+                  )}
+
+                  {metaGroups.length > 0 && (
+                    <span className="ml-0.5 inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground-subtle">
+                      {metaGroups.map((group, i) => (
+                        <Fragment key={i}>
+                          {i > 0 && (
+                            <span aria-hidden="true" className="text-foreground-faint">
+                              ·
+                            </span>
+                          )}
+                          {group}
+                        </Fragment>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              )}
+            </button>
+
+            {/*
+             * Row actions — `self-center` overrides the row's `items-start`.
+             *
+             * The checkbox stays pinned to the title's first line (that is what a
+             * checkbox next to wrapped text should do), but the action cluster is
+             * not tied to any line of text: it belongs to the card as a whole, so
+             * it centres against whatever height the title + meta row produce.
+             */}
+            <div className="flex shrink-0 items-center gap-0.5 self-center">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={todo.starred ? t("todo.unstar") : t("todo.star")}
+                    aria-pressed={todo.starred}
+                    onClick={onStar}
+                    className={cn(
+                      todo.starred ? "text-yellow" : `text-foreground-subtle ${revealOnHover}`
+                    )}
+                  >
+                    <Icon
+                      icon={Star}
+                      size="sm"
+                      className={todo.starred ? "fill-current" : undefined}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {todo.starred ? t("todo.unstar") : t("todo.star")}
+                </TooltipContent>
+              </Tooltip>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("todo.actions")}
+                    className={cn("text-foreground-subtle", revealOnHover)}
+                  >
+                    <Icon icon={MoreHorizontal} size="sm" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  {menuItems(dropdownParts)}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {/* Expanded detail */}
+          {expanded && hasDetail && (
+            <div className="animate-fade-in border-t border-border py-4 pl-[3.25rem] pr-5">
+              {todo.notes && (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground-muted">
+                  {todo.notes}
+                </p>
+              )}
+
+              {todo.subtasks.length > 0 && (
+                <div className={cn(todo.notes && "mt-4")}>
+                  <div className="mb-3 flex items-center gap-3">
+                    <Progress
+                      value={subProgress}
+                      variant="thin"
+                      className="flex-1"
+                      color={subProgress === 100 ? "bg-green" : "bg-accent"}
+                    />
+                    <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+                      {subProgress}%
+                    </span>
+                  </div>
+                  <ul className="flex flex-col gap-1">
+                    {todo.subtasks.map((sub) => (
+                      <li key={sub.id} className="flex items-center gap-2.5 py-0.5">
+                        <Checkbox
+                          checked={sub.done}
+                          onCheckedChange={() => onToggleSubtask(sub.id)}
+                          aria-label={sub.title}
+                        />
+                        <span
+                          className={cn(
+                            "text-sm",
+                            sub.done && "text-foreground-subtle line-through"
+                          )}
+                        >
+                          {sub.title}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {todo.tags.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {todo.tags.map((tag) => (
+                    <Tag key={tag}>#{tag}</Tag>
+                  ))}
+                </div>
+              )}
+
+              {/*
+               * The completion stamp is its own call rather than a string replace
+               * on the creation one: the two differ by a verb that leads in
+               * English and trails in Chinese, so it has to be a lookup key, not a
+               * substitution.
+               */}
+              <p className="mt-4 font-mono text-xs text-foreground-faint">
+                {relativeCreated(todo.createdAt, language)}
+                {todo.completedAt
+                  ? ` · ${relativeCreated(todo.completedAt, language, "completed")}`
+                  : ""}
+              </p>
             </div>
           )}
-
-          {todo.tags.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {todo.tags.map((tag) => (
-                <Tag key={tag}>#{tag}</Tag>
-              ))}
-            </div>
-          )}
-
-          {/*
-           * The completion stamp is its own call rather than a string replace
-           * on the creation one: the two differ by a verb that leads in
-           * English and trails in Chinese, so it has to be a lookup key, not a
-           * substitution.
-           */}
-          <p className="mt-4 font-mono text-xs text-foreground-faint">
-            {relativeCreated(todo.createdAt, language)}
-            {todo.completedAt
-              ? ` · ${relativeCreated(todo.completedAt, language, "completed")}`
-              : ""}
-          </p>
-        </div>
-      )}
-    </Card>
+        </Card>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52">{menuItems(contextParts)}</ContextMenuContent>
+    </ContextMenu>
   );
 }

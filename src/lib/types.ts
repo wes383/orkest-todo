@@ -6,6 +6,15 @@ import type { MessageKey } from "@/lib/messages";
 
 export type Priority = "urgent" | "high" | "medium" | "low";
 
+/**
+ * The longest a single tag may be, in characters (code points as the user
+ * counts them, which is what an `<input maxLength>` counts too). One constant
+ * backs every gate — the editor's tag field, and the quick-add `#tag` parser,
+ * which demotes an over-long tag to plain text rather than saving something
+ * the editor would refuse.
+ */
+export const MAX_TAG_LENGTH = 30;
+
 export interface Subtask {
   id: string;
   title: string;

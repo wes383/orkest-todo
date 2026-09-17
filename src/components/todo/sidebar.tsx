@@ -5,6 +5,7 @@ import {
   CalendarClock,
   CalendarDays,
   CheckCircle2,
+  EyeOff,
   Inbox,
   MoreHorizontal,
   Pencil,
@@ -26,6 +27,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -36,7 +43,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SubsectionLabel } from "@/components/ui/section";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
-import { HIDEABLE_VIEWS, type AppSettings } from "@/lib/settings";
+import {
+  HIDEABLE_VIEWS,
+  type AppSettings,
+  type HideableView,
+} from "@/lib/settings";
 import type { MessageKey } from "@/lib/messages";
 import type { TodoList, ViewId } from "@/lib/types";
 import { paletteVar } from "@/lib/types";
@@ -84,6 +95,9 @@ export interface SidebarProps {
   onSelectStats: () => void;
   onSelectSettings: () => void;
   onSelectView: (view: ViewId) => void;
+  /** Right-click on a hideable view row: the same hide the settings page
+      offers, without the trip there. */
+  onHideView: (view: HideableView) => void;
   onSelectList: (listId: string | null) => void;
   onCreateList: () => void;
   onEditList: (list: TodoList) => void;
@@ -102,6 +116,7 @@ export function Sidebar({
   onSelectStats,
   onSelectSettings,
   onSelectView,
+  onHideView,
   onSelectList,
   onCreateList,
   onEditList,
@@ -140,7 +155,14 @@ export function Sidebar({
                   activeListId === null;
                 const count = counts[view.id];
                 const alarming = view.id === "overdue" && count > 0;
-                return (
+
+                /*
+                 * Right-click hides a view — but only a hideable one. 全部任务
+                 * and 今天 are the app's spine; a context menu offering to
+                 * remove them would be an offer the settings page would refuse,
+                 * so those two rows simply have no menu at all.
+                 */
+                const row = (
                   <button
                     key={view.id}
                     type="button"
@@ -167,6 +189,24 @@ export function Sidebar({
                       </span>
                     )}
                   </button>
+                );
+
+                if (!HIDEABLE_VIEWS.includes(view.id as never)) {
+                  return row;
+                }
+
+                return (
+                  <ContextMenu key={view.id}>
+                    <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+                    <ContextMenuContent className="w-40">
+                      <ContextMenuItem
+                        onSelect={() => onHideView(view.id as HideableView)}
+                      >
+                        <Icon icon={EyeOff} size="sm" />
+                        {t("sidebar.hideView")}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 );
               })}
             </nav>
@@ -206,66 +246,88 @@ export function Sidebar({
               {lists.map((list) => {
                 const active = screen === "todos" && activeListId === list.id;
                 const count = listCounts[list.id] ?? 0;
+                /*
+                 * Right-click on a list row speaks the same language as its ⋯
+                 * button: rename, delete. One context menu wrapping the whole
+                 * row — the little trigger stays where it was, hover-revealed
+                 * and unchanged.
+                 */
                 return (
-                  <div
-                    key={list.id}
-                    className={cn(
-                      "group relative flex items-center rounded-md transition-colors duration-base ease-out",
-                      active ? "bg-hover-bg-strong" : "hover:bg-hover-bg"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => onSelectList(list.id)}
-                      aria-current={active ? "true" : undefined}
-                      className={cn(
-                        rowLayout,
-                        "pr-9",
-                        active ? rowActiveText : rowIdleText
-                      )}
-                    >
-                      <span
-                        className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: paletteVar(list.color) }}
-                      />
-                      <span className="flex-1 truncate text-left">
-                        {list.name}
-                      </span>
-                      {count > 0 && (
-                        <span className="font-mono text-xs tabular-nums text-foreground-subtle">
-                          {count}
-                        </span>
-                      )}
-                    </button>
+                  <ContextMenu key={list.id}>
+                    <ContextMenuTrigger asChild>
+                      <div
+                        className={cn(
+                          "group relative flex items-center rounded-md transition-colors duration-base ease-out",
+                          active ? "bg-hover-bg-strong" : "hover:bg-hover-bg"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onSelectList(list.id)}
+                          aria-current={active ? "true" : undefined}
+                          className={cn(
+                            rowLayout,
+                            "pr-9",
+                            active ? rowActiveText : rowIdleText
+                          )}
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: paletteVar(list.color) }}
+                          />
+                          <span className="flex-1 truncate text-left">
+                            {list.name}
+                          </span>
+                          {count > 0 && (
+                            <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+                              {count}
+                            </span>
+                          )}
+                        </button>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t("sidebar.listActions", {
-                            name: list.name,
-                          })}
-                          className="absolute right-1 h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
-                        >
-                          <Icon icon={MoreHorizontal} size="sm" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onSelect={() => onEditList(list)}>
-                          <Icon icon={Pencil} size="sm" />
-                          {t("sidebar.renameList")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onSelect={() => setPendingDelete(list)}
-                        >
-                          <Icon icon={Trash2} size="sm" />
-                          {t("sidebar.deleteList")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t("sidebar.listActions", {
+                                name: list.name,
+                              })}
+                              className="absolute right-1 h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                            >
+                              <Icon icon={MoreHorizontal} size="sm" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem onSelect={() => onEditList(list)}>
+                              <Icon icon={Pencil} size="sm" />
+                              {t("sidebar.renameList")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => setPendingDelete(list)}
+                            >
+                              <Icon icon={Trash2} size="sm" />
+                              {t("sidebar.deleteList")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="w-40">
+                      <ContextMenuItem onSelect={() => onEditList(list)}>
+                        <Icon icon={Pencil} size="sm" />
+                        {t("sidebar.renameList")}
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        variant="destructive"
+                        onSelect={() => setPendingDelete(list)}
+                      >
+                        <Icon icon={Trash2} size="sm" />
+                        {t("sidebar.deleteList")}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 );
               })}
             </nav>
