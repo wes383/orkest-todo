@@ -281,7 +281,11 @@ function load(lang: Language): PersistedState {
     }
     return {
       version: 1,
-      todos: parsed.todos,
+      // Normalized rather than passed through: records saved by an older build
+      // can be missing a field the current type calls for — `recur` above all,
+      // where the type says `Recur | null` but old storage holds `undefined`.
+      // Coercing once at the door keeps every reader free of the question.
+      todos: parsed.todos.map((todo) => ({ ...todo, recur: todo.recur ?? null })),
       lists: parsed.lists.length > 0 ? parsed.lists : SEED[lang].lists,
     };
   } catch {
@@ -539,6 +543,19 @@ export function useTodoStore(lang: Language) {
     [state.lists, lang]
   );
 
+  /**
+   * Erases every task and list — the settings page's 删除所有数据.
+   *
+   * The default lists are re-seeded rather than left empty, for the same
+   * reason `removeList` re-seeds at its floor: quick-add needs somewhere to
+   * put a task, and "a fresh install" is what the reader asked for. Focus
+   * hours are not touched here — they belong to the focus store, which clears
+   * itself at the same call site.
+   */
+  const clearAll = useCallback(() => {
+    setState({ version: 1, todos: [], lists: SEED[lang].lists });
+  }, [lang]);
+
   return {
     todos: state.todos,
     lists: state.lists,
@@ -554,6 +571,7 @@ export function useTodoStore(lang: Language) {
     addList,
     updateList,
     removeList,
+    clearAll,
   };
 }
 

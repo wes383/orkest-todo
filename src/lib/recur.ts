@@ -74,6 +74,48 @@ export function nextDueDate(recur: Recur, fromISO: string): string | null {
 }
 
 /**
+ * The rule as an RFC 5545 (iCalendar) RRULE, for exports meant to be read by
+ * other software — a spreadsheet, a calendar importer — rather than a person
+ * scanning a column. The localized label stays on the card and in the editor;
+ * the file speaks the standard.
+ *
+ * `daily` and `weekdays` carry everything inside themselves. `weekly` means
+ * "every week on the due date's weekday" (see [`nextDueDate`]'s +7 arithmetic),
+ * so the weekday is written in from `dueISO` to keep the rule self-contained —
+ * a row with no DTSTART of its own would otherwise lose that anchor. Monthly
+ * and yearly stay bare: their clamp-to-last-day behavior has no faithful
+ * RRULE spelling, and `BYMONTHDAY` would promise a day February cannot keep.
+ *
+ * Empty string for nothing — callers check first, so this never sees a
+ * non-rule; the parameter is the same `Recur | null` the store holds.
+ */
+export function recurRrule(recur: Recur, dueISO: string | null): string {
+  const day = (index: number) => RRULE_DAY[index];
+  switch (recur.kind) {
+    case "daily":
+      return recur.interval === 1
+        ? "FREQ=DAILY"
+        : `FREQ=DAILY;INTERVAL=${recur.interval}`;
+    case "weekly":
+      return dueISO
+        ? `FREQ=WEEKLY;BYDAY=${day(fromISODate(dueISO).getDay())}`
+        : "FREQ=WEEKLY";
+    case "weekdays":
+      return `FREQ=WEEKLY;BYDAY=${[...recur.days]
+        .sort((a, b) => a - b)
+        .map(day)
+        .join(",")}`;
+    case "monthly":
+      return "FREQ=MONTHLY";
+    case "yearly":
+      return "FREQ=YEARLY";
+  }
+}
+
+/** RFC 5545's two-letter weekday codes, indexed by JS day (0 = Sunday …). */
+const RRULE_DAY = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+/**
  * The label a task card and the editor's select both show — one wording per
  * rule, so the card and the form can never disagree about what it repeats.
  */

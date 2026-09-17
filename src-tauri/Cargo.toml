@@ -28,6 +28,11 @@ tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The export's native folder picker — see `save_csv_files` in `src/lib.rs`.
+# A one-crate command instead of the dialog + fs plugins: the export only ever
+# needs "ask once, write what the frontend already built", and this keeps the
+# capability surface empty.
+rfd = "0.15"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

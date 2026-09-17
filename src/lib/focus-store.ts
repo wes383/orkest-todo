@@ -19,11 +19,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  MAX_USEFUL_MS,
-  MIN_USEFUL_MS,
-  type FocusSpan,
-} from "@/lib/focus-spans";
+import { spanLimits } from "@/lib/settings";
+import type { FocusSpan } from "@/lib/focus-spans";
 
 const LOG_KEY = "orkest-todo.focus.log.v1";
 const STATE_KEY = "orkest-todo.focus.state";
@@ -53,15 +50,25 @@ function readSpan(value: unknown): FocusSpan | null {
     start: span.start,
     end: span.end,
     listId: typeof span.listId === "string" ? span.listId : null,
+    // The frozen floor travels with the stretch; an old record without one
+    // stays without one and falls back to the shipped default when judged.
+    minMs: typeof span.minMs === "number" ? span.minMs : undefined,
   };
 }
 
-/** Drops the stretches too brief to count as work. A stretch that is still
-    running has no end to measure yet, so it is always kept — it gets judged when
-    the switch actually flips back, and dropped then if it came up short. */
+/** Drops the stretches too brief to count as work — but only by a stretch's
+    own frozen floor, never by the setting as it now stands: a span that was
+    long enough when it closed stays on the record whatever the reader changes
+    later. Spans closed before floors were frozen on (`minMs` absent) are
+    history and are never dropped here. A stretch still running has no end to
+    measure yet, so it is always kept — it gets judged when the switch actually
+    flips back, and dropped then if it came up short. */
 function dropBriefSpans(spans: FocusSpan[]): FocusSpan[] {
   return spans.filter(
-    (span) => span.end === null || span.end - span.start >= MIN_USEFUL_MS
+    (span) =>
+      span.end === null ||
+      span.minMs === undefined ||
+      span.end - span.start >= span.minMs
   );
 }
 
@@ -126,15 +133,18 @@ function load(): { state: FocusState; spans: FocusSpan[] } {
   }
 
   const newest = spans[spans.length - 1];
+  const { minMs, maxMs } = spanLimits();
   if (
     state === "useful" &&
     newest !== undefined &&
     newest.end === null &&
-    Date.now() - newest.start >= MAX_USEFUL_MS
+    Date.now() - newest.start >= maxMs
   ) {
     spans = [
       ...spans.slice(0, -1),
-      { ...newest, end: newest.start + MAX_USEFUL_MS },
+      // The stretch is closing here, so it is judged — and its floor frozen —
+      // under the rules as they stand right now, like any close is.
+      { ...newest, end: newest.start + maxMs, minMs },
     ];
     state = "idle";
     // Corrected on the spot rather than left for the next write: the next write
@@ -165,7 +175,7 @@ function writeSpans(spans: FocusSpan[]): void {
   }
 }
 
-export function useFocusStore() {
+export function useFocusStore(capMs: number = spanLimits().maxMs) {
   /*
    * Lazy initialiser on purpose: `load` reads localStorage and reconciles the
    * two keys with each other. It must run exactly once — running it per render
@@ -228,12 +238,18 @@ export function useFocusStore() {
         }
         // Coming back closes it — or drops it, if it turned out too brief to
         // count, in which case the time it covered goes back to plain grey. The
-        // end is capped, so a stretch left running overnight closes at eight
-        // hours rather than at the moment someone finally noticed.
+        // end is capped, so a stretch left running overnight closes at the
+        // reader's cap rather than at the moment someone finally noticed. Both
+        // rules are read live: a change in settings governs the very next
+        // stretch.
         if (!last || last.end !== null) return prev;
-        const end = Math.min(now, last.start + MAX_USEFUL_MS);
-        if (end - last.start < MIN_USEFUL_MS) return prev.slice(0, -1);
-        return [...prev.slice(0, -1), { ...last, end }];
+        const { minMs, maxMs } = spanLimits();
+        const end = Math.min(now, last.start + maxMs);
+        if (end - last.start < minMs) return prev.slice(0, -1);
+        // The floor the stretch passed under is frozen onto it: from here on
+        // it is on record, and a later change of the setting re-judges
+        // nothing that is already closed.
+        return [...prev.slice(0, -1), { ...last, end, minMs }];
       });
 
       writeState(to);
@@ -272,10 +288,11 @@ export function useFocusStore() {
     (index: number, end: number) => {
       patch((prev) => {
         const span = prev[index];
-        // A running stretch has no end to move, and the five-minute floor holds
-        // here as firmly as it does when the switch closes a stretch itself.
+        // A running stretch has no end to move, and the stretch's own floor —
+        // the one it was closed under — holds here as firmly as it did when
+        // the switch closed it, whatever the setting says today.
         if (!span || span.end === null) return prev;
-        if (end - span.start < MIN_USEFUL_MS) return prev;
+        if (end - span.start < (span.minMs ?? spanLimits().minMs)) return prev;
         const next = [...prev];
         next[index] = { ...span, end };
         return next;
@@ -294,7 +311,9 @@ export function useFocusStore() {
       patch((prev) => {
         const span = prev[index];
         if (!span || span.end === null) return prev;
-        if (end - span.start < MIN_USEFUL_MS) return prev;
+        // Judged by the stretch's own frozen floor, like every other touch of
+        // an already-closed stretch.
+        if (end - span.start < (span.minMs ?? spanLimits().minMs)) return prev;
         const midnight = dayStartAfter(end);
         // Nothing ran past midnight, so there is nothing to cut off. Without
         // this the tail would open *after* the stretch ended and describe a
@@ -348,17 +367,36 @@ export function useFocusStore() {
   /**
    * A session left running closes itself at the cap, switch and all: away time
    * counts as focus, but not for ever, so a forgotten instance comes back to
-   * "idle" on its own.
+   * "idle" on its own. The cap arrives as an argument — the app hands in what
+   * settings currently says — so a change there re-arms this timer instead of
+   * leaving the old limit armed.
    */
   useEffect(() => {
     if (running === null) return;
-    const wait = running.start + MAX_USEFUL_MS - Date.now();
+    const wait = running.start + capMs - Date.now();
     // A session already overdue — a window woken from sleep, say — collapses to a
     // zero delay. Either way the flip goes through a timer rather than running in
     // the effect body, where setState would land mid-commit.
     const id = window.setTimeout(() => commit("idle"), Math.max(0, wait));
     return () => window.clearTimeout(id);
-  }, [running, commit]);
+  }, [running, commit, capMs]);
+
+  /**
+   * Erases the whole log and parks the switch at idle — the settings page's
+   * 删除所有数据, focus half.
+   *
+   * The switch goes with the log it was writing into: leaving it on "useful"
+   * against an empty log would open a fresh stretch on the very next commit,
+   * straight into a history the reader just erased. Reset through the same
+   * three steps `commit` uses — ref, state, storage — so nothing downstream
+   * can disagree about where the switch is.
+   */
+  const clearAll = useCallback(() => {
+    patch(() => []);
+    stateRef.current = "idle";
+    setState("idle");
+    writeState("idle");
+  }, [patch]);
 
   return {
     spans,
@@ -370,6 +408,7 @@ export function useFocusStore() {
     split,
     remove,
     forgetList,
+    clearAll,
   };
 }
 

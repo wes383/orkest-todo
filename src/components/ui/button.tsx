@@ -30,7 +30,7 @@ const buttonVariants = cva(
         default: "bg-accent text-accent-fg hover:bg-accent-hover",
         outline: "bg-surface text-foreground border border-border hover:bg-hover-bg",
         ghost: "bg-transparent text-foreground hover:bg-hover-bg",
-        danger: "bg-red text-white hover:bg-red-fg",
+        danger: "bg-red-solid text-white hover:bg-red-solid-hover",
         subtle: "bg-hover-bg text-foreground hover:bg-hover-bg-strong",
         link: "bg-transparent text-foreground underline-offset-4 hover:underline rounded-none",
       },

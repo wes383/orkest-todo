@@ -105,6 +105,12 @@ export default function App() {
     removeList,
   } = store;
 
+  /** Sidebar view visibility and the focus rules, persisted; the settings page
+      edits them and the sidebar and the focus log read them, so the state
+      lives here between them. Declared before the focus store: the store's
+      auto-stop timer takes its cap from here. */
+  const { settings, setViewVisible, setSpanLimits } = useSettings();
+
   /*
    * The focus log, live — held here rather than inside the focus view so that
    * the session keeps running on the real clock no matter which screen is
@@ -112,7 +118,9 @@ export default function App() {
    * is a fact about the day, not about which tab happens to be open, and the
    * store's own timer is what closes a forgotten one at the cap.
    */
-  const focus = useFocusStore();
+  /** The cap the running auto-stop timer is armed with, from settings — handed
+      in so a change there re-arms the timer instead of leaving the old limit. */
+  const focus = useFocusStore(settings.maxSpanHours * 3_600_000);
 
   // A milestone earned anywhere in the app announces itself, corner-side —
   // the log is watched here, not in the stats page, so the toast does not
@@ -124,9 +132,6 @@ export default function App() {
       focus switch, the statistics, or settings. One at a time, never layered:
       each is a place, and picking another is how you leave. */
   const [screen, setScreen] = useState<Screen>("todos");
-  /** Sidebar view visibility, persisted; the settings page edits it and the
-      sidebar reads it, so the state lives here between them. */
-  const { settings, setViewVisible } = useSettings();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Todo | null>(null);
   const [listDialogOpen, setListDialogOpen] = useState(false);
@@ -135,6 +140,20 @@ export default function App() {
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const quickAddRef = useRef<QuickAddHandle | null>(null);
+  /*
+   * The quick-add field lives on the tasks screen alone, so a request to focus
+   * it can arrive while it does not exist — the tray's 新建任务 while settings
+   * or the statistics fill the window. The count is a rendezvous: bumping it
+   * schedules a focus for after the screen has switched back and React has
+   * mounted the field, when the ref finally points at something.
+   */
+  const [quickAddFocusTicket, setQuickAddFocusTicket] = useState(0);
+
+  useEffect(() => {
+    if (quickAddFocusTicket > 0) {
+      quickAddRef.current?.focus();
+    }
+  }, [quickAddFocusTicket]);
 
   /* ── Derived data ────────────────────────────────────────── */
 
@@ -278,7 +297,8 @@ export default function App() {
   /*
    * The tray menu's click handler. Rust has already brought the window to the
    * front by the time this runs — all that is left is the part the native side
-   * cannot express: what 今天 means, and where the caret should go.
+   * cannot express: what 今天 means, where the caret should go, and which way
+   * the focus switch should now stand.
    */
   const handleTrayCommand = useCallback(
     (command: TrayCommand) => {
@@ -288,17 +308,40 @@ export default function App() {
          * same surface Ctrl+N leads to and the same one the empty state points
          * at — so a task caught from the tray lands identically to one caught
          * from the window.
+         *
+         * The field only exists on the tasks screen. From settings, the focus
+         * switch or the statistics there is nothing to focus yet, so the screen
+         * goes back to the tasks first and the focus rides the ticket — fired
+         * once the switch has rendered and the ref is alive again.
          */
+        if (screen !== "todos") {
+          setScreen("todos");
+          setQuickAddFocusTicket((n) => n + 1);
+          return;
+        }
         quickAddRef.current?.focus();
+        return;
+      }
+
+      if (command.action === "toggle-focus") {
+        /*
+         * The exact move the focus screen's own switch makes — same store, same
+         * list filing (`filters.listId`, the sidebar's selection) — only fired
+         * from behind the window, which stays wherever it is.
+         */
+        focus.commit(
+          focus.state === "useful" ? "idle" : "useful",
+          filters.listId
+        );
         return;
       }
 
       selectView(command.view);
     },
-    [selectView]
+    [selectView, focus.commit, focus.state, filters.listId, screen]
   );
 
-  useTrayBridge(counts, language, handleTrayCommand);
+  useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
 
   const handleQuickAdd = useCallback(
     (draft: QuickInput) => {
@@ -576,9 +619,15 @@ export default function App() {
         ) : screen === "settings" ? (
           <SettingsView
             spans={focus.spans}
+            todos={todos}
             lists={lists}
             settings={settings}
             setViewVisible={setViewVisible}
+            setSpanLimits={setSpanLimits}
+            onDeleteAllData={() => {
+              store.clearAll();
+              focus.clearAll();
+            }}
           />
         ) : (
         <main className="flex min-w-0 flex-1 flex-col">

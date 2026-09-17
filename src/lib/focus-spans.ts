@@ -24,6 +24,7 @@ import {
   type Language,
   type MessageKey,
 } from "@/lib/messages";
+import { DEFAULT_MIN_SPAN_MINUTES, spanLimits } from "@/lib/settings";
 
 /**
  * One stretch of the day spent in the "useful" state, in epoch ms. `end` is
@@ -39,17 +40,40 @@ export interface FocusSpan {
    * view, or one whose list was deleted afterwards.
    */
   listId: string | null;
+  /**
+   * The floor this stretch was judged against when it closed, in milliseconds
+   * — frozen onto it at the moment the switch wrote its end, so a later
+   * change of the setting re-judges nothing already on record. Absent on a
+   * stretch still running (nothing has been judged yet) and on stretches
+   * recorded before the floor became a setting, which were all judged
+   * against the shipped default.
+   */
+  minMs?: number;
 }
 
-/** A dip into "useful" shorter than this is not treated as work at all: the
-    stretch is dropped and stays grey, as if the break had simply carried on. */
-export const MIN_USEFUL_MS = 300_000;
+/* ── The rules a stretch is measured by ─────────────────────────────────── */
 
-/** The most a stretch that is *still running* is credited. Nobody works eight
-    hours without stopping, so a switch left on by mistake stops counting there
-    instead of quietly swallowing the whole night. An end already written is
-    never trimmed to it. */
-export const MAX_USEFUL_MS = 8 * 3_600_000;
+/**
+ * The rules a stretch is measured by come from settings (`minSpanMinutes` /
+ * `maxSpanHours` there, milliseconds here) — but only for stretches still
+ * being written. A closed stretch keeps the floor it was closed under (its
+ * own `minMs`) and the end its cap gave it, so changing settings re-judges
+ * nothing already on record; a running stretch is judged live, and a change
+ * takes effect on it and on every stretch after it, without a restart.
+ */
+
+/** The floor a stretch that is *still running* is judged against, live — it
+    has no floor of its own until the switch closes it and freezes one on. */
+function minUsefulMs(): number {
+  return spanLimits().minMs;
+}
+
+/** The most a stretch that is *still running* is credited. A switch left on by
+    mistake stops counting there instead of quietly swallowing the whole night.
+    An end already written is never trimmed to it. */
+function maxUsefulMs(): number {
+  return spanLimits().maxMs;
+}
 
 /* ── Days, weeks, and the clock ─────────────────────────────────────────── */
 
@@ -114,6 +138,19 @@ export function duration(ms: number, lang: Language): string {
   if (h === 0) return translate(lang, "focus.duration.minutes", { n: m });
   if (m === 0) return translate(lang, "focus.duration.hours", { n: h });
   return translate(lang, "focus.duration.hoursMinutes", { h, m });
+}
+
+/** The same duration, but a stretch under a minute speaks in seconds —
+    `42 秒` / `42 sec` — because rounding a 40-second run up to "1 minute"
+    would print a minute that never happened. Anything a minute or longer
+    reads exactly as `duration` reads it. */
+export function durationWithSeconds(ms: number, lang: Language): string {
+  if (ms > 0 && ms < 60_000) {
+    return translate(lang, "focus.duration.seconds", {
+      n: Math.round(ms / 1_000),
+    });
+  }
+  return duration(ms, lang);
 }
 
 /** `13:05` / `01:05 PM` — a moment as the reader's own locale writes it. The one
@@ -236,18 +273,23 @@ export function dateRange(from: number, until: number, lang: Language): string {
     what keeps its green from creeping past eight hours while the switch is
     forgotten. */
 export function cappedEnd(span: FocusSpan, fallback: number): number {
-  return span.end ?? Math.min(fallback, span.start + MAX_USEFUL_MS);
+  return span.end ?? Math.min(fallback, span.start + maxUsefulMs());
 }
 
 /** Whether a stretch is work *as far as one day is concerned*.
 
-    A stretch is cut at every midnight it crosses, and the five-minute floor is
-    then applied per slice rather than once to the whole stretch: 11:00 pm →
-    12:03 am is a session worth keeping, but the three minutes it left on the
-    second day are on their own too short to be work, so that day does not count
-    them — and stays grey through them. Without this the day's list and its total
-    would disagree: the row would show three minutes that the total had already
+    A stretch is cut at every midnight it crosses, and the floor is then applied
+    per slice rather than once to the whole stretch: 11:00 pm → 12:03 am is a
+    session worth keeping, but the three minutes it left on the second day are
+    on their own too short to be work, so that day does not count them — and
+    stays grey through them. Without this the day's list and its total would
+    disagree: the row would show three minutes that the total had already
     refused.
+
+    A closed stretch answers to the floor it was closed under — its own
+    `minMs` — so a later change of the setting never re-judges it; a stretch
+    still running answers to the setting as it stands, because it is still
+    being written.
 
     The one exception is a slice that is still being written — the open end of a
     stretch that has not been switched off yet. It is credited as it goes and
@@ -264,7 +306,11 @@ export function countsOn(
   const stop = Math.min(end, to);
   if (stop <= start) return false;
   if (span.end === null && end < to) return true;
-  return stop - start >= MIN_USEFUL_MS;
+  const floor =
+    span.end === null
+      ? minUsefulMs()
+      : (span.minMs ?? DEFAULT_MIN_SPAN_MINUTES * 60_000);
+  return stop - start >= floor;
 }
 
 /** A day's share of a stretch, once the five-minute rule has had its say. */

@@ -151,7 +151,22 @@ const zh = {
   "settings.sectionLanguage": "语言",
   "settings.sectionSidebar": "侧边栏",
   "settings.sidebarHint": "选择在侧边栏中显示哪些视图。",
+  "settings.sectionFocus": "专注",
+  "settings.minSpan": "最短专注片段",
+  "settings.minSpanHint": "关闭时短于此时长（分钟）的片段会被丢弃；已记录的专注不受影响。",
+  "settings.maxSpan": "进行中片段的上限",
+  "settings.maxSpanHint": "进行中的片段最多计此时长（小时）；已结束的片段不受影响。",
   "settings.sectionData": "数据",
+  "settings.sectionDanger": "危险区",
+  "settings.deleteAll": "删除所有数据",
+  "settings.deleteAllHint":
+    "清除全部任务、清单与专注记录，无法撤销。设置（外观、语言等）会保留。",
+  "settings.deleteAllAction": "删除",
+  "settings.deleteAllTitle": "删除所有数据？",
+  "settings.deleteAllBody":
+    "全部任务、清单和专注记录将被永久删除，此操作无法撤销。",
+  "settings.deleteAllType": "输入 {keyword} 以确认",
+  "settings.deleteAllDone": "已删除所有数据",
   "settings.theme": "主题",
 
   /* ── Toolbar ─────────────────────────────────────────────── */
@@ -285,6 +300,7 @@ const zh = {
   "focus.session.elapsed": "已进行 {value}",
 
   /* ── Focus · durations, clocks and hour names ────────────── */
+  "focus.duration.seconds": "{n} 秒",
   "focus.duration.minutes": "{n} 分钟",
   "focus.duration.hours": "{n} 小时",
   "focus.duration.hoursMinutes": "{h} 小时 {m} 分",
@@ -306,7 +322,7 @@ const zh = {
   "focus.log.stretches": "专注逐段记录",
   "focus.log.emptyToday": "今天还没有记录有用时间。",
   "focus.log.emptyDay": "那天没有记录有用时间。",
-  "focus.log.foot": "不足 5 分钟的片段会被丢弃；仍在进行的片段最多计 8 小时。",
+  "focus.log.foot": "不足 {min} 分钟的片段会被丢弃；仍在进行的片段最多计 {max} 小时。",
   "focus.log.prevDay": "前一天",
   "focus.log.nextDay": "后一天",
   "focus.log.day": "日期",
@@ -367,6 +383,8 @@ const zh = {
   "focus.log.when.peak": "最高效的一小时是{days}的 {from}–{to}，累计 {value}。",
   "focus.log.export": "导出全部数据",
   "focus.log.exportAction": "下载",
+  "focus.log.exportSaved": "已导出到 {folder}",
+  "focus.log.exportFailed": "导出失败：{error}",
   "focus.log.scope": "清单",
   "focus.log.scopeAll": "全部清单",
 
@@ -559,7 +577,22 @@ const en: Record<MessageKey, Message> = {
   "settings.sectionLanguage": "Language",
   "settings.sectionSidebar": "Sidebar",
   "settings.sidebarHint": "Choose which views appear in the sidebar.",
+  "settings.sectionFocus": "Focus",
+  "settings.minSpan": "Shortest focus span",
+  "settings.minSpanHint": "Spans shorter than this, in minutes, are dropped when they close; recorded focus is unaffected.",
+  "settings.maxSpan": "Running span cap",
+  "settings.maxSpanHint": "A span still running is credited up to this, in hours; finished spans are unaffected.",
   "settings.sectionData": "Data",
+  "settings.sectionDanger": "Danger zone",
+  "settings.deleteAll": "Delete all data",
+  "settings.deleteAllHint":
+    "Clears every task, list and focus record. This cannot be undone. Settings (appearance, language, …) are kept.",
+  "settings.deleteAllAction": "Delete",
+  "settings.deleteAllTitle": "Delete all data?",
+  "settings.deleteAllBody":
+    "Every task, list and focus record will be permanently deleted. This cannot be undone.",
+  "settings.deleteAllType": "Type {keyword} to confirm",
+  "settings.deleteAllDone": "All data deleted",
   "settings.theme": "Theme",
 
   /* ── Toolbar ─────────────────────────────────────────────── */
@@ -699,6 +732,7 @@ const en: Record<MessageKey, Message> = {
   /* ── Focus · durations, clocks and hour names ────────────── */
   // Abbreviated units ("13 min", "2 h") — the full words overflow the narrow
   // metric tiles in English and break their padding.
+  "focus.duration.seconds": "{n} sec",
   "focus.duration.minutes": "{n} min",
   "focus.duration.hours": "{n} h",
   "focus.duration.hoursMinutes": "{h} h {m} min",
@@ -721,7 +755,7 @@ const en: Record<MessageKey, Message> = {
   "focus.log.emptyToday": "Nothing logged as useful yet today.",
   "focus.log.emptyDay": "Nothing logged as useful that day.",
   "focus.log.foot":
-    "Stretches under 5 minutes are dropped; a stretch still running is capped at 8 hours.",
+    "Stretches under {min} minutes are dropped; a stretch still running is capped at {max} hours.",
   "focus.log.prevDay": "Previous day",
   "focus.log.nextDay": "Next day",
   "focus.log.day": "Day",
@@ -784,6 +818,8 @@ const en: Record<MessageKey, Message> = {
     "Your most effective hour is {from}–{to} on {days}, holding {value} of useful time.",
   "focus.log.export": "Export all data",
   "focus.log.exportAction": "Download",
+  "focus.log.exportSaved": "Saved to {folder}",
+  "focus.log.exportFailed": "Export failed: {error}",
   "focus.log.scope": "List",
   "focus.log.scopeAll": "All lists",
 

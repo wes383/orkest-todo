@@ -57,7 +57,6 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Card, Heat, Line, Metric, Segmented } from "@/components/focus/focus-charts";
 import {
-  MIN_USEFUL_MS,
   PERIODS,
   SCOPE_ALL,
   SCOPE_UNASSIGNED,
@@ -74,6 +73,7 @@ import {
   daysAscending,
   daysBetween,
   duration,
+  durationWithSeconds,
   endClockLabel,
   heatmap,
   hourName,
@@ -110,6 +110,7 @@ import {
   taskStats,
   usefulSplit,
 } from "@/lib/task-stats";
+import { spanLimits } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { paletteVar, type Todo, type TodoList } from "@/lib/types";
 
@@ -783,15 +784,18 @@ export function FocusStats({
 
     // The rules the log keeps everywhere else, enforced here as well so a hand
     // edit cannot talk it into something the switch itself would have refused:
-    // after the start and at least five minutes long, nothing in the future, and
-    // nothing that runs into the stretch behind it. How long it may run is not
-    // one of them — the eight hours bound what a forgotten switch can write, not
-    // what a correction may say.
+    // after the start and at least the reader's own floor long, nothing in the
+    // future, and nothing that runs into the stretch behind it. How long it may
+    // run is not one of them — the cap bounds what a forgotten switch can
+    // write, not what a correction may say.
     if (end < spanStart) {
       refuse(t("focus.log.refuse.beforeStart"));
       return;
     }
-    if (end - spanStart < MIN_USEFUL_MS) {
+    // The stretch's own floor — the one it was closed under — not whatever
+    // the setting says today, so an edit to an old stretch answers to the
+    // rule it was recorded under.
+    if (end - spanStart < (spans[index]?.minMs ?? spanLimits().minMs)) {
       refuse(t("focus.log.refuse.tooShort"));
       return;
     }
@@ -1383,7 +1387,13 @@ export function FocusStats({
                             const fragment = row.fromEarlier || row.intoLater;
                             const running = span.end === null && !row.intoLater;
                             const closed = span.end ?? now ?? span.start;
-                            const elapsed = duration(end - start, language);
+                            // Under a minute the row speaks in seconds: a
+                            // 40-second run rounded up to "1 minute" would
+                            // print a minute that never happened.
+                            const elapsed = durationWithSeconds(
+                              end - start,
+                              language
+                            );
                             const refusedHere =
                               refused?.index === index ? refused : null;
                             const asking = confirming === index;
@@ -1630,7 +1640,10 @@ export function FocusStats({
                         useful stretch left running is credited at most the cap,
                         so nobody loses a night to a forgotten switch. */}
                     <p className="mt-5 text-sm leading-snug text-foreground-muted">
-                      {t("focus.log.foot")}
+                      {t("focus.log.foot", {
+                        min: spanLimits().minMs / 60_000,
+                        max: spanLimits().maxMs / 3_600_000,
+                      })}
                     </p>
                   </Card>
 

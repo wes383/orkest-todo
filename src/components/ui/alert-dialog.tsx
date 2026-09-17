@@ -125,7 +125,10 @@ const AlertDialogAction = React.forwardRef<
       "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-medium leading-none select-none transition-all duration-base ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50",
       "h-9 px-4 text-sm",
       destructive
-        ? "bg-red text-white hover:bg-red-fg"
+        ? // `red-solid`, not the bare `--red`: that one doubles as dark-mode
+          // text ink and goes pale on dark surfaces, which is right for text
+          // but washes out a white-on-red fill.
+          "bg-red-solid text-white hover:bg-red-solid-hover"
         : "bg-accent text-accent-fg hover:bg-accent-hover",
       className
     )}

@@ -38,11 +38,15 @@ enum TrayCommand {
   /// window is back. The native menu cannot host a text box, so this is the
   /// closest thing to "add a task straight from the tray".
   NewTask,
+  /// Flip the focus switch without surfacing the window — the one command the
+  /// tray can carry out entirely behind the reader's back.
+  ToggleFocus,
   /// Switch to one of the three urgency views.
   OpenView { view: &'static str },
 }
 
 const MENU_NEW_TASK: &str = "new-task";
+const MENU_TOGGLE_FOCUS: &str = "toggle-focus";
 const MENU_OPEN_WINDOW: &str = "open-window";
 const MENU_QUIT: &str = "quit";
 
@@ -110,6 +114,23 @@ fn label_new_task(lang: Lang) -> &'static str {
   }
 }
 
+/**
+ * The focus toggle's label, in both states.
+ *
+ * The row is a verb that changes with the switch it controls — 开始专注 while
+ * idle, 结束专注 while running — so the reader never has to remember which
+ * way up the switch currently is; the menu says what clicking will do, the
+ * way the other rows do.
+ */
+fn label_toggle_focus(lang: Lang, running: bool) -> &'static str {
+  match (lang, running) {
+    (Lang::Zh, false) => "开始专注",
+    (Lang::Zh, true) => "结束专注",
+    (_, false) => "Start focus",
+    (_, true) => "Stop focus",
+  }
+}
+
 fn label_open_window(lang: Lang) -> &'static str {
   match lang {
     Lang::Zh => "打开主窗口",
@@ -159,12 +180,16 @@ fn view_label(lang: Lang, view: &str, count: usize) -> String {
  */
 struct TrayMenu {
   new_task: MenuItem<Wry>,
+  toggle_focus: MenuItem<Wry>,
   open_window: MenuItem<Wry>,
   quit: MenuItem<Wry>,
   /** One handle per [`VIEW_ROWS`] entry, in the same order. */
   views: Vec<MenuItem<Wry>>,
   /** Last language painted, so a redundant sync does not thrash the menu. */
   lang: Mutex<Lang>,
+  /** Last focus state painted — the toggle's label is a function of it, and
+      like `lang` it only crosses the bridge when it actually moves. */
+  focus_running: Mutex<bool>,
 }
 
 /// Bring the main window back to the foreground.
@@ -238,6 +263,16 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
     true,
     None::<&str>,
   )?;
+  // The tray boots before the webview has reported anything: painted as "Start
+  // focus" (the idle label), which the first `sync_tray` corrects if a session
+  // is somehow already running.
+  let toggle_focus = MenuItem::with_id(
+    app,
+    MENU_TOGGLE_FOCUS,
+    label_toggle_focus(lang, false),
+    true,
+    None::<&str>,
+  )?;
   let open_window = MenuItem::with_id(
     app,
     MENU_OPEN_WINDOW,
@@ -270,7 +305,8 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
   let divider_views = PredefinedMenuItem::separator(app)?;
   let divider_quit = PredefinedMenuItem::separator(app)?;
 
-  let mut rows: Vec<&dyn IsMenuItem<Wry>> = vec![&new_task, &open_window, &divider_views];
+  let mut rows: Vec<&dyn IsMenuItem<Wry>> =
+    vec![&new_task, &toggle_focus, &open_window, &divider_views];
   rows.extend(views.iter().map(|item| item as &dyn IsMenuItem<Wry>));
   rows.push(&divider_quit);
   rows.push(&quit);
@@ -287,6 +323,12 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
       MENU_NEW_TASK => {
         reveal_main_window(app);
         emit_command(app, TrayCommand::NewTask);
+      }
+      MENU_TOGGLE_FOCUS => {
+        // Deliberately no `reveal_main_window` here: flipping the switch is
+        // the whole point of this row, and dragging the window up over it
+        // would defeat the "without going back to the interface" part.
+        emit_command(app, TrayCommand::ToggleFocus);
       }
       MENU_OPEN_WINDOW => reveal_main_window(app),
       // Deliberately NOT `window.close()`: that request is intercepted below and
@@ -333,10 +375,12 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
   // half-built menu.
   app.manage(TrayMenu {
     new_task,
+    toggle_focus,
     open_window,
     quit,
     views,
     lang: Mutex::new(lang),
+    focus_running: Mutex::new(false),
   });
 
   Ok(())
@@ -359,7 +403,12 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
  * frontend sends this whenever the counts move *or* the language changes.
  */
 #[tauri::command]
-fn sync_tray(app: AppHandle, counts: HashMap<String, usize>, lang: String) {
+fn sync_tray(
+  app: AppHandle,
+  counts: HashMap<String, usize>,
+  lang: String,
+  focus_running: bool,
+) {
   let Some(menu) = app.try_state::<TrayMenu>() else {
     return;
   };
@@ -367,16 +416,16 @@ fn sync_tray(app: AppHandle, counts: HashMap<String, usize>, lang: String) {
   let lang = Lang::parse(&lang);
 
   /*
-   * Repaint the static rows only on a real change. `set_text` on a native menu
+   * Repaint the rows only on a real change. `set_text` on a native menu
    * item is cheap but not free, and this runs on every count sync — which is
    * every time a task is added, completed or deleted.
    *
-   * A poisoned mutex is recovered rather than propagated: the lock only ever
-   * guards a `Copy` enum, so there is no invariant it could have been left
+   * A poisoned mutex is recovered rather than propagated: the locks only ever
+   * guard `Copy` values, so there is no invariant they could have been left
    * holding, and losing the tray to a panic elsewhere is not a trade worth
    * making.
    */
-  let changed = {
+  let lang_changed = {
     let mut current = menu.lang.lock().unwrap_or_else(|e| e.into_inner());
     if *current == lang {
       false
@@ -385,11 +434,30 @@ fn sync_tray(app: AppHandle, counts: HashMap<String, usize>, lang: String) {
       true
     }
   };
+  let running_changed = {
+    let mut current = menu
+      .focus_running
+      .lock()
+      .unwrap_or_else(|e| e.into_inner());
+    if *current == focus_running {
+      false
+    } else {
+      *current = focus_running;
+      true
+    }
+  };
 
-  if changed {
+  if lang_changed {
     let _ = menu.new_task.set_text(label_new_task(lang));
     let _ = menu.open_window.set_text(label_open_window(lang));
     let _ = menu.quit.set_text(label_quit(lang));
+  }
+
+  // The toggle's label moves whenever either input to it moves.
+  if lang_changed || running_changed {
+    let _ = menu
+      .toggle_focus
+      .set_text(label_toggle_focus(lang, focus_running));
   }
 
   for ((_, view), item) in VIEW_ROWS.iter().copied().zip(menu.views.iter()) {
@@ -403,6 +471,74 @@ fn sync_tray(app: AppHandle, counts: HashMap<String, usize>, lang: String) {
 #[tauri::command]
 fn greet(name: &str) -> String {
   format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+/**
+ * One file the CSV export wants on disk, as the frontend hands it over: the
+ * dated name it should carry (so a second export never lands on the first)
+ * and the whole sheet as one string, byte-order mark included.
+ */
+#[derive(serde::Deserialize)]
+struct ExportFile {
+  name: String,
+  contents: String,
+}
+
+/**
+ * The CSV export, native side: one folder picker for the whole export, then
+ * every file written into it.
+ *
+ * A folder — not a save dialog per file — because the export is two files
+ * that belong together, and asking twice would make the second pick feel
+ * like a mistake. The dated names the frontend generates stand in for the
+ * filename box a save dialog would have asked about.
+ *
+ * `Ok(None)` is the reader cancelling; the frontend takes that as nothing
+ * happened.
+ *
+ * The dialog itself is dispatched to the **main thread** via
+ * [`run_on_main_thread`], with an mpsc channel carrying the answer back.
+ * It has to be: `IFileDialog` on Windows is a COM object that needs an STA
+ * thread pumping messages, and a Tauri async command runs on a tokio worker
+ * that is neither — called directly from there the picker simply never
+ * appears, and the click looks dead. Blocking a worker on `recv()` while the
+ * dialog is up is fine: tokio keeps several workers, and the main thread's
+ * message pump is doing the waiting work anyway.
+ */
+#[tauri::command]
+async fn save_csv_files(
+  window: tauri::WebviewWindow,
+  files: Vec<ExportFile>,
+) -> Result<Option<String>, String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    window
+      .run_on_main_thread(move || {
+        let folder = rfd::FileDialog::new()
+          .set_title("选择导出位置 / Choose where to save")
+          .pick_folder();
+        // The receiver is blocked on this send for as long as the dialog is
+        // open, so it cannot go stale even if the window is closed behind it:
+        // `run_on_main_thread` tasks finish before teardown completes.
+        let _ = tx.send(folder);
+      })
+      .map_err(|e| e.to_string())?;
+
+    let Some(folder) = rx.recv().map_err(|e| e.to_string())? else {
+      return Ok(None);
+    };
+
+    for file in &files {
+      let path = folder.join(&file.name);
+      std::fs::write(&path, file.contents.as_bytes())
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+
+    Ok(Some(folder.display().to_string()))
+  })
+  .await
+  .map_err(|e| e.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -428,7 +564,7 @@ pub fn run() {
 
   builder
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![greet, sync_tray])
+    .invoke_handler(tauri::generate_handler![greet, sync_tray, save_csv_files])
     .setup(|app| {
       build_tray(app)?;
       Ok(())

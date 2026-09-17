@@ -13,10 +13,22 @@
  * how it looks, what it says, what it shows, what it hands over.
  */
 
-import { useCallback, type ReactNode } from "react";
-import { Download } from "lucide-react";
+import { useCallback, useState, type ReactNode } from "react";
+import { Download, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -27,12 +39,12 @@ import {
 import { SubsectionLabel } from "@/components/ui/section";
 import { Switch } from "@/components/ui/switch";
 import { useAppTheme } from "@/components/theme-provider";
-import { downloadCsv } from "@/components/focus/focus-csv";
+import { downloadAll } from "@/components/focus/focus-csv";
 import type { FocusSpan } from "@/lib/focus-spans";
 import { useI18n } from "@/lib/i18n";
 import { LANGUAGES, LANGUAGE_LABELS, type MessageKey } from "@/lib/messages";
 import { HIDEABLE_VIEWS, type AppSettings, type HideableView } from "@/lib/settings";
-import type { TodoList } from "@/lib/types";
+import type { Todo, TodoList } from "@/lib/types";
 
 /** Which sidebar row each hideable view names — the sidebar's own message
     keys, so the two surfaces cannot drift apart. */
@@ -42,6 +54,12 @@ const HIDEABLE_LABEL_KEYS: Record<HideableView, MessageKey> = {
   starred: "view.starred",
   completed: "view.completed",
 };
+
+/** Clamp a typed number into its range — the settings page's own guard, so a
+    wild value never even reaches storage. */
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, value));
+}
 
 /** One row of a settings panel: label (and its explanation) on the left, the
     control on the right, a hairline between rows. */
@@ -79,20 +97,40 @@ function Row({
 export interface SettingsViewProps {
   /** The whole focus log — the export hands over all of it. */
   spans: FocusSpan[];
+  /** The whole task set — the export hands these over too, in their own file. */
+  todos: Todo[];
   lists: TodoList[];
   /** Owned by App, so the sidebar answers the moment a toggle moves. */
   settings: AppSettings;
   setViewVisible: (view: HideableView, visible: boolean) => void;
+  /** The focus rules the log reads live; see `settings.ts`. */
+  setSpanLimits: (minSpanMinutes: number, maxSpanHours: number) => void;
+  /** The settings page's own trigger — App clears both stores behind it, so
+      the button stays a declaration and the wiping stays where the data is. */
+  onDeleteAllData: () => void;
 }
 
 export function SettingsView({
   spans,
+  todos,
   lists,
   settings,
   setViewVisible,
+  setSpanLimits,
+  onDeleteAllData,
 }: SettingsViewProps) {
   const { t, language, setLanguage } = useI18n();
   const { theme, setTheme, highContrast, toggleHighContrast } = useAppTheme();
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  /** What the reader has typed into the confirm box — the delete only
+      unlocks when it matches the keyword, so a click means they read. */
+  const [confirmText, setConfirmText] = useState("");
+  /** The word the dialog demands. Chinese readers get the verb itself; for
+      Latin text the case is folded, because "delete" vs "DELETE" is not a
+      distinction worth holding a delete button hostage over. */
+  const deleteKeyword = language === "zh" ? "删除" : "DELETE";
+  const deleteConfirmed =
+    confirmText.trim().toLowerCase() === deleteKeyword.toLowerCase();
 
   /** The export names a list on every row it writes; a deleted list's stretches
       go out as the empty name, which is what the unassigned bucket means. */
@@ -191,8 +229,61 @@ export function SettingsView({
             </div>
           </section>
 
+          {/* Focus — the two rules the log measures a stretch by. Values are
+              clamped here before they are stored, so a wild number never
+              reaches the log; settings.ts clamps again on the way back in. */}
+          <section className="mt-6">
+            <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
+              {t("settings.sectionFocus")}
+            </SubsectionLabel>
+            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+              <Row
+                label={t("settings.minSpan")}
+                hint={t("settings.minSpanHint")}
+                htmlFor="settings-min-span"
+              >
+                <Input
+                  id="settings-min-span"
+                  type="number"
+                  min={0}
+                  max={1440}
+                  value={settings.minSpanMinutes}
+                  onChange={(e) =>
+                    setSpanLimits(
+                      clamp(Number(e.target.value) || 0, 0, 1440),
+                      settings.maxSpanHours
+                    )
+                  }
+                  className="h-9 w-24 rounded-md text-sm"
+                />
+              </Row>
+              <Row
+                label={t("settings.maxSpan")}
+                hint={t("settings.maxSpanHint")}
+                htmlFor="settings-max-span"
+              >
+                <Input
+                  id="settings-max-span"
+                  type="number"
+                  min={1}
+                  max={24}
+                  value={settings.maxSpanHours}
+                  onChange={(e) =>
+                    setSpanLimits(
+                      settings.minSpanMinutes,
+                      clamp(Number(e.target.value) || 1, 1, 24)
+                    )
+                  }
+                  className="h-9 w-24 rounded-md text-sm"
+                />
+              </Row>
+            </div>
+          </section>
+
           {/* Data — the CSV export, moved here from the foot of the statistics
-              page: "everything the log holds" is a whole-app concern. */}
+              page: "everything the log holds" is a whole-app concern. One
+              click now writes two files: the focus log as it always went, and
+              the task set beside it. */}
           <section className="mt-6">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionData")}
@@ -202,8 +293,26 @@ export function SettingsView({
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={spans.length === 0}
-                  onClick={() => downloadCsv(spans, nameOf, language)}
+                  disabled={spans.length === 0 && todos.length === 0}
+                  onClick={() => {
+                    // One folder pick covers both files inside the Tauri app;
+                    // the answer is where they went, `null` a cancel. A
+                    // failure is *shown* rather than swallowed: a silent
+                    // catch here reads exactly like a dead button.
+                    downloadAll(spans, todos, nameOf, lists, language)
+                      .then((folder) => {
+                        if (folder !== null) {
+                          toast.success(t("focus.log.exportSaved", { folder }));
+                        }
+                      })
+                      .catch((error: unknown) => {
+                        toast.error(
+                          t("focus.log.exportFailed", {
+                            error: String(error),
+                          })
+                        );
+                      });
+                  }}
                 >
                   <Icon icon={Download} size="sm" />
                   {t("focus.log.exportAction")}
@@ -211,8 +320,82 @@ export function SettingsView({
               </Row>
             </div>
           </section>
+
+          {/* Danger zone — the one destructive button on the page. Behind the
+              confirm dialog, because a single mis-click on "delete everything"
+              is not a mistake the app can offer to undo. */}
+          <section className="mt-6">
+            <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
+              {t("settings.sectionDanger")}
+            </SubsectionLabel>
+            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+              <Row label={t("settings.deleteAll")} hint={t("settings.deleteAllHint")}>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                >
+                  <Icon icon={Trash2} size="sm" />
+                  {t("settings.deleteAllAction")}
+                </Button>
+              </Row>
+            </div>
+          </section>
         </div>
       </div>
+
+      <AlertDialog
+        open={confirmDeleteOpen}
+        onOpenChange={(open) => {
+          // A closed dialog forgets what was typed: next time starts cold,
+          // and nothing half-typed lingers armed beside a destructive key.
+          setConfirmDeleteOpen(open);
+          if (!open) setConfirmText("");
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("settings.deleteAllTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("settings.deleteAllBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {/* The content shell is `p-0` — header and footer carry their own
+              padding, so an element between them pads itself. `px-6` lines the
+              field up with the description above it. */}
+          <div className="px-6">
+            {/* `sm`: the dialog is a short question with a short answer, and
+                the md default reads like a form field for a whole sentence. */}
+            <Input
+              size="sm"
+              className="mt-1"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={t("settings.deleteAllType", {
+                keyword: deleteKeyword,
+              })}
+              aria-label={t("settings.deleteAllType", {
+                keyword: deleteKeyword,
+              })}
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              destructive
+              disabled={!deleteConfirmed}
+              onClick={() => {
+                onDeleteAllData();
+                toast.success(t("settings.deleteAllDone"));
+              }}
+            >
+              {t("settings.deleteAllAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

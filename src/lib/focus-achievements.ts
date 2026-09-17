@@ -109,9 +109,10 @@ const PERFECT_DAYS = [1, 3, 7, 14, 30, 60, 100, 200, 360, 500, 720, 1000];
 export const PERFECT_DAY_RULE_KEY: MessageKey = "focus.ms.perfect.rule";
 
 /** The longest a stretch can be and still count as a flash: the record for
-    getting in and out fast. Nothing shorter than `MIN_USEFUL_MS` can turn up
-    here — a stretch that brief is dropped before it is ever written down — so
-    the band this record is set in runs from five minutes to ten. */
+    getting in and out fast. Nothing shorter than the reader's minimum span can
+    turn up here — a stretch that brief is dropped before it is ever written
+    down — so the band this record is set in runs from the minimum to ten
+    minutes. */
 const FLASH_MS = 10 * 60_000;
 
 /** A fortress is a day whose hours stand up on their own: fewer moves of the

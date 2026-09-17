@@ -24,25 +24,29 @@ export type TrayCounts = Record<"today" | "upcoming" | "overdue", number>;
 
 export type TrayCommand =
   | { action: "new-task" }
+  | { action: "toggle-focus" }
   | { action: "open-view"; view: ViewId };
 
 /**
- * Two-way bridge between the tray menu and the app state.
- *
- * Three things travel between the two sides, and they travel in both directions
+ * Four things travel between the two sides, and they travel in both directions
  * for a reason:
  *
  * - counts go **up**, because the tasks live in the webview's localStorage and
  *   Rust has no way to ask for them;
+ * - the focus switch's position goes **up** too, for the same reason — the
+ *   tray's 开始专注/结束专注 row must say what clicking will do, and only the
+ *   webview knows where the switch stands;
  * - the click comes **down**, because a native menu item can only report its own
- *   id — the meaning of 「今天」 belongs to `selectors.ts`.
- * - the language goes **up** too, for the same reason the counts do: the app's
- *   language is a frontend decision (stored in localStorage, defaulted from
- *   `navigator.languages`), and Rust has no way to reach either.
+ *   id — the meaning of 「今天」 belongs to `selectors.ts`, and what flipping the
+ *   focus switch means belongs to the focus store;
+ * - the language goes **up** as well, for the same reason the counts do: the
+ *   app's language is a frontend decision (stored in localStorage, defaulted
+ *   from `navigator.languages`), and Rust has no way to reach either.
  */
 export function useTrayBridge(
   counts: TrayCounts,
   lang: Language,
+  focusRunning: boolean,
   onCommand: (command: TrayCommand) => void
 ) {
   /*
@@ -64,10 +68,10 @@ export function useTrayBridge(
    * does not re-invoke — `viewCounts` rebuilds a new object every time the
    * memo runs.
    *
-   * The language rides along in the same call. It is one round trip for two
-   * facts that always repaint the same menu, and it means switching language
-   * re-sends the counts as a side effect of `lang` being in the deps — no
-   * second effect to keep in step.
+   * The language and the focus switch ride along in the same call: one round
+   * trip for facts that always repaint the same menu, and switching either
+   * re-sends the counts as a side effect of the deps — no second effect to
+   * keep in step.
    */
   React.useEffect(() => {
     if (!isTauri()) return;
@@ -75,11 +79,12 @@ export function useTrayBridge(
     invoke("sync_tray", {
       counts: { today, upcoming, overdue },
       lang,
+      focusRunning,
     }).catch((error: unknown) => {
       // Stale numbers in a tray menu are cosmetic. Never let them break the app.
       console.warn("[tray] failed to sync the tray menu", error);
     });
-  }, [today, upcoming, overdue, lang]);
+  }, [today, upcoming, overdue, lang, focusRunning]);
 
   React.useEffect(() => {
     if (!isTauri()) return;
@@ -97,6 +102,8 @@ export function useTrayBridge(
       const command = event.payload;
       if (command.action === "new-task") {
         latest.current({ action: "new-task" });
+      } else if (command.action === "toggle-focus") {
+        latest.current({ action: "toggle-focus" });
       } else if (TRAY_VIEWS.includes(command.view)) {
         latest.current({ action: "open-view", view: command.view });
       }
