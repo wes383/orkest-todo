@@ -29,6 +29,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { FocusView } from "@/components/focus/focus-view";
+import { FocusStats } from "@/components/focus/focus-stats";
+import { SettingsView } from "@/components/settings/settings-view";
 import { Sidebar } from "@/components/todo/sidebar";
 import { Toolbar } from "@/components/todo/toolbar";
 import { QuickAdd, type QuickAddHandle } from "@/components/todo/quick-add";
@@ -54,11 +56,12 @@ import {
 } from "@/lib/selectors";
 import { useTodoStore, type TodoDraft } from "@/lib/store";
 import { useFocusStore } from "@/lib/focus-store";
+import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/messages";
-import type { PaletteName, Todo, TodoList, ViewId } from "@/lib/types";
+import type { PaletteName, Screen, Todo, TodoList, ViewId } from "@/lib/types";
 
 /**
  * Titles only. Views used to carry a one-line hint too, but for the default
@@ -111,10 +114,13 @@ export default function App() {
   const focus = useFocusStore();
 
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  /** Whether the focus screen owns the main area. The sidebar never goes away
-      — it is the way back — so this only decides what fills the space beside
-      it. */
-  const [focusMode, setFocusMode] = useState(false);
+  /** Which screen fills the space beside the sidebar — the task list, the
+      focus switch, the statistics, or settings. One at a time, never layered:
+      each is a place, and picking another is how you leave. */
+  const [screen, setScreen] = useState<Screen>("todos");
+  /** Sidebar view visibility, persisted; the settings page edits it and the
+      sidebar reads it, so the state lives here between them. */
+  const { settings, setViewVisible } = useSettings();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Todo | null>(null);
   const [listDialogOpen, setListDialogOpen] = useState(false);
@@ -244,12 +250,12 @@ export default function App() {
    * while the switch is up can only mean "show me the tasks".
    */
   const selectView = useCallback((view: ViewId) => {
-    setFocusMode(false);
+    setScreen("todos");
     setFilters({ ...DEFAULT_FILTERS, view });
   }, []);
 
   const selectList = useCallback((listId: string | null) => {
-    setFocusMode(false);
+    setScreen("todos");
     setFilters({ ...DEFAULT_FILTERS, listId });
   }, []);
 
@@ -482,9 +488,11 @@ export default function App() {
           listCounts={listCounts}
           activeView={filters.view}
           activeListId={filters.listId}
-          focusMode={focusMode}
-          onSelectFocus={() => setFocusMode(true)}
-          stats={stats}
+          screen={screen}
+          settings={settings}
+          onSelectFocus={() => setScreen("focus")}
+          onSelectStats={() => setScreen("stats")}
+          onSelectSettings={() => setScreen("settings")}
           onSelectView={selectView}
           onSelectList={selectList}
           onCreateList={() => {
@@ -503,11 +511,28 @@ export default function App() {
          * not a layer over the tasks — it replaces them — which is what keeps
          * the switch the only thing in view while a session is running.
          */}
-        {focusMode ? (
+        {screen === "focus" ? (
           <FocusView
             store={focus}
             lists={lists}
             sidebarListId={filters.listId}
+            onOpenStats={() => setScreen("stats")}
+          />
+        ) : screen === "stats" ? (
+          <FocusStats
+            spans={focus.spans}
+            lists={lists}
+            onReschedule={focus.reschedule}
+            onSplit={focus.split}
+            onDelete={focus.remove}
+            onSetList={focus.setList}
+          />
+        ) : screen === "settings" ? (
+          <SettingsView
+            spans={focus.spans}
+            lists={lists}
+            settings={settings}
+            setViewVisible={setViewVisible}
           />
         ) : (
         <main className="flex min-w-0 flex-1 flex-col">

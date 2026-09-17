@@ -394,7 +394,11 @@ export function Heat({
                     aria-hidden={value > 0 ? undefined : true}
                     onPointerEnter={(event) => enter(event, label)}
                     className={cn(
-                      "h-4 flex-1 cursor-pointer rounded-[3px]",
+                      // Square by construction: the width is whatever the row
+                      // hands out (flex-1) and `aspect-square` derives the
+                      // height from it, so a wider card grows taller cells
+                      // rather than wider rectangles.
+                      "aspect-square flex-1 cursor-pointer rounded-[3px]",
                       HEAT_STEPS[heatStep(value, FULLEST)]
                     )}
                   />

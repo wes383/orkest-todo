@@ -112,6 +112,13 @@ export const VIEW_ORDER: ViewId[] = [
   "completed",
 ];
 
+/**
+ * What fills the main area. Every screen but `todos` is its own place rather
+ * than another filter over the task list, which is why they are screens and
+ * not views.
+ */
+export type Screen = "todos" | "focus" | "stats" | "settings";
+
 export type StatusFilter = "all" | "active" | "completed";
 export type SortKey = "due" | "priority" | "created" | "title";
 

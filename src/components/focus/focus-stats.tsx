@@ -1,48 +1,40 @@
 "use client";
 
 /**
- * The focus log, as a sheet over the switch.
+ * The focus statistics, as a page of its own.
  *
- * Ported from Pivot's drawer (`pivot/app/drawer.tsx`), which is the reference
- * for this feature. The shape of it is the original's: the day's stretches down
- * one side with the averages and personal best beside them, then the trend, the
- * shape of the day, and the board of milestones; the whole log goes out as CSV
- * at the foot. Every figure is derived from the same log the switch writes, so
+ * It began life as Pivot's drawer (`pivot/app/drawer.tsx`) — a sheet over the
+ * switch — and was later promoted to a screen in the sidebar: the figures grew
+ * into the thing people actually visit, so they got a place of their own. The
+ * shape of the content is still the original's: the day's stretches down one
+ * side with the averages and personal best beside them, then the trend, the
+ * shape of the day, and the board of milestones. Every figure is derived from
+ * the same log the switch writes, so
+ *
  * nothing here can disagree with the rail.
  *
- * ── What this sheet adds to Pivot's ─────────────────────────────────────────
+ * ── What this page adds to Pivot's ─────────────────────────────────────────
  *
- * A list, three times over:
+ * A list, twice over:
  *
  *  - `By list` breaks the time down by where it went, and carries the scope
- *    picker: choosing a list rescales every card on the sheet at once, because
+ *    picker: choosing a list rescales every card on the page at once, because
  *    every one of them is computed from the same `scoped` array. Nothing
  *    downstream has to know the scope changed. It stands in the top-left
  *    corner, because it is the one card that says where the hours went and the
- *    one the rest of the sheet is read against.
+ *    one the rest of the page is read against.
  *  - Every row of the stretch list wears its own list and lets it be changed —
  *    on any row, running or long finished, as many times as wanted. That is
  *    the same action the switch offers for the session it is running, reached
- *    from the log's end instead of the switch's.
- *  - The export writes a row a stretch with the list named on it.
+ *    from the row itself rather than the switch's.
  *
- * ── Why it is a real dialog ─────────────────────────────────────────────────
- *
- * Pivot hand-rolls the sheet. This one rides on Radix's dialog, which is what
- * gives it a focus trap, Escape-to-close and focus returned to the switch when
- * it goes — the three things a hand-rolled sheet quietly lacks. The look is the
- * original's: a panel risen from the foot of the window, nearly full width so it
- * still reads as a sheet rather than as a new page.
+ * The CSV export does not live here — it belongs with the other whole-app
+ * settings, in the settings page, where "everything the app holds" is a more
+ * honest home for it than the foot of a page of charts.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Timer } from "lucide-react";
-import {
-  Dialog,
-  DialogOverlay,
-  DialogPortal,
-  DialogPrimitive,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -50,11 +42,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Card, Heat, Line, Metric, Segmented } from "@/components/focus/focus-charts";
-import { downloadCsv } from "@/components/focus/focus-csv";
 import {
   MIN_USEFUL_MS,
   PERIODS,
@@ -361,14 +351,12 @@ function Arrow({ fragment }: { fragment: boolean }) {
   );
 }
 
-/* ── The sheet ─────────────────────────────────────────────────────────── */
+/* ── The page ──────────────────────────────────────────────────────────── */
 
-export interface FocusLogProps {
-  open: boolean;
-  /** The whole log, oldest first — the sheet reads it, never owns it. */
+export interface FocusStatsProps {
+  /** The whole log, oldest first — the page reads it, never owns it. */
   spans: FocusSpan[];
   lists: TodoList[];
-  onClose: () => void;
   /** Move the end of the stretch at `index` in the log. */
   onReschedule: (index: number, end: number) => void;
   /** End the stretch at `index` at `end` and keep the rest of it as a second
@@ -381,25 +369,15 @@ export interface FocusLogProps {
   onSetList: (index: number, listId: string | null) => void;
 }
 
-export function FocusLog({
-  open,
+export function FocusStats({
   spans,
   lists,
-  onClose,
   onReschedule,
   onSplit,
   onDelete,
   onSetList,
-}: FocusLogProps) {
+}: FocusStatsProps) {
   const { t, language, locale } = useI18n();
-
-  // The export row names itself twice, and both halves are needed. The label on
-  // the left says what is being handed over; the button's own word says what
-  // pressing it does. Joined into one accessible name, they are a sentence a
-  // screen reader can act on — and one that still contains the word on the
-  // button, which is what speech control matches against.
-  const exportLabel = useId();
-  const downloadLabel = useId();
 
   // Today is what a log is opened to check, so the averages start there instead
   // of on the week.
@@ -421,12 +399,11 @@ export function FocusLog({
       it happens in the same millisecond as the first. */
   const refusals = useRef(0);
 
-  // The clock is read once the sheet is open rather than during a render — a
+  // The clock is read once the page is mounted rather than during a render — a
   // render has to stay pure and the time is not — and then kept honest with a
-  // slow beat, so a sheet left open does not quietly drift.
+  // slow beat, so a page left open does not quietly drift.
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
-    if (!open) return;
     const tick = () => setNow(Date.now());
     // Deferred by a hair rather than run in the effect body, where a
     // synchronous write would land mid-commit.
@@ -436,30 +413,18 @@ export function FocusLog({
       window.clearTimeout(first);
       window.clearInterval(beat);
     };
-  }, [open]);
-
-  // Closing also puts away anything half-asked: a stale "Delete?" or a stale
-  // complaint has no business greeting the next open. The scope goes back to the
-  // whole log for the same reason — a sheet opened to check today should not
-  // come back up quietly showing one list's figures.
-  const close = useCallback(() => {
-    setConfirming(null);
-    setRefused(null);
-    setDay(null);
-    setScope(SCOPE_ALL);
-    onClose();
-  }, [onClose]);
+  }, []);
 
   // A complaint is about the edit just attempted, so the next click anywhere
   // retires it — there is nothing to hunt for, and no stale verdict left sitting
   // under a row the reader has already moved on from. Captured on the way down so
   // that whatever was clicked still gets the click.
   useEffect(() => {
-    if (!open || refused === null) return;
+    if (refused === null) return;
     const dismiss = () => setRefused(null);
     window.addEventListener("pointerdown", dismiss, true);
     return () => window.removeEventListener("pointerdown", dismiss, true);
-  }, [open, refused]);
+  }, [refused]);
 
   /** A scope pointing at a list that has since been deleted falls back to the
       whole log, which is the reading that is still true. */
@@ -778,54 +743,23 @@ export function FocusLog({
   ];
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) close();
-      }}
-    >
-      <DialogPortal>
-        {/* Quiet enough to leave the switch legible behind it — and, unlike the
-            app's own dialogs, unblurred: the sheet is nearly the whole window,
-            so there is nothing left to see through it. */}
-        <DialogOverlay className="backdrop-blur-none" />
+    <main className="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground">
+      <h1 className="sr-only">{t("focus.log.title")}</h1>
 
-        {/* Nearly the whole screen wide, one frame's worth of page left showing
-            down each side, so the sheet still reads as a sheet rather than as a
-            new page. The figures inside stop widening long before it does — a
-            table with the times at one edge and the buttons at the other is
-            harder to read than a narrower one. */}
-        <div className="fixed inset-x-1 bottom-0 z-modal flex justify-center sm:inset-x-1.5 lg:inset-x-2">
-          <DialogPrimitive.Content
-            aria-label={t("focus.log.title")}
-            aria-describedby={undefined}
-            className="relative flex h-[92dvh] w-full max-w-[1600px] flex-col overflow-hidden rounded-t-2xl border border-b-0 border-border bg-surface shadow-dialog transition-transform duration-500 ease-out data-[state=open]:animate-sheet-up focus:outline-none motion-reduce:animate-none motion-reduce:transition-none"
-          >
-            {/* The whole sheet scrolls — the cards travel to its top edge — and
-                the strip holding the grabber floats over them. The strip is the
-                way out: the bar is 40px wide, the target is the sheet's full
-                width and a comfortable 28px deep. And `aria-hidden` sits on the
-                bar rather than on the button: the bar is the drawing, the button
-                is the control, and the control needs a name to be read aloud. */}
-            <DialogPrimitive.Close
-              aria-label={t("focus.log.close")}
-              className="group absolute inset-x-0 top-0 z-10 flex justify-center bg-surface/50 py-3 backdrop-blur-xl backdrop-saturate-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span
-                aria-hidden="true"
-                className="h-1 w-10 rounded-full bg-hover-bg-strong transition-colors duration-base ease-out group-hover:bg-foreground-faint"
-              />
-            </DialogPrimitive.Close>
+      {/* The whole page scrolls — the cards travel to its top edge. The figures
+          stop widening long before the page does — a table with the times at one
+          edge and the buttons at the other is harder to read than a narrower
+          one — so the column is capped like the sheet's was.
 
-            <DialogPrimitive.Title className="sr-only">
-              {t("focus.log.title")}
-            </DialogPrimitive.Title>
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {/* 44px of air: the 28px strip plus the 16px gap it used to sit
-                  above, so the first card starts where it always did and nothing
-                  hides under the glass until the sheet is scrolled. */}
-              <div className="mx-auto w-full max-w-[1600px] px-5 pb-12 pt-11 sm:px-6 lg:px-8">
+          `relative` is load-bearing: the cards hold absolutely-positioned
+          `sr-only` labels, and an absolute box positions against the nearest
+          positioned ancestor. Without one here they resolve against the
+          document, escape this scroller's clip entirely, and stretch the page
+          itself — a second scrollbar at the window's edge, one scroll level
+          too far out. (Radix's ScrollArea.Root carries `relative` for exactly
+          this reason, which is why the task list never showed the bug.) */}
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1600px] px-5 pb-12 pt-6 sm:px-6 lg:px-8">
                 {/* Two columns once there is room for two; one before that, in
                     the order of how often the thing is looked at. The breakdown
                     leads, in the corner the eye lands on first: it is the one
@@ -1475,44 +1409,8 @@ export function FocusLog({
                     </p>
                   </Card>
                 </div>
-
-                {/* The log itself, out. One row a stretch, which is all the log
-                    actually holds — every figure in this sheet is derived from
-                    those rows, so this is the whole history rather than a summary
-                    of it. Deliberately the whole log and not the scoped view: the
-                    label says "all data", and a file that quietly left rows out
-                    would be a trap. Disabled on an empty log, where there is no
-                    file to write.
-
-                    Laid out as a quiet label on the left with its control on the
-                    right, so the foot of the sheet reads as one list rather than
-                    two. The button says its own word instead of wearing an arrow
-                    into a tray: at this size a glyph is a guess, and the word is
-                    not. Its name is the two halves of the row together, since
-                    neither alone says both what leaves and what happens when you
-                    press. */}
-                <div className="mt-5 flex items-center justify-between gap-4">
-                  <span id={exportLabel} className="text-xs text-foreground-subtle">
-                    {t("focus.log.export")}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={spans.length === 0}
-                    aria-labelledby={`${exportLabel} ${downloadLabel}`}
-                    onClick={() => downloadCsv(spans, nameOf, language)}
-                    className="h-7 rounded-md px-2.5 text-xs"
-                  >
-                    <span id={downloadLabel}>
-                      {t("focus.log.exportAction")}
-                    </span>
-                  </Button>
-                </div>
               </div>
-            </div>
-          </DialogPrimitive.Content>
-        </div>
-      </DialogPortal>
-    </Dialog>
+      </div>
+    </main>
   );
 }

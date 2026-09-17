@@ -33,7 +33,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DayRail } from "@/components/focus/focus-rail";
-import { FocusLog } from "@/components/focus/focus-log";
 import { SCOPE_UNASSIGNED, duration } from "@/lib/focus-spans";
 import type { FocusState, FocusStore } from "@/lib/focus-store";
 import { useI18n } from "@/lib/i18n";
@@ -243,13 +242,20 @@ export interface FocusViewProps {
   lists: TodoList[];
   /** The list the sidebar is showing, which a new session opens wearing. */
   sidebarListId: string | null;
+  /** The statistics live on a page of their own now; the rail is one of the
+      doors into it. */
+  onOpenStats: () => void;
 }
 
-export function FocusView({ store, lists, sidebarListId }: FocusViewProps) {
+export function FocusView({
+  store,
+  lists,
+  sidebarListId,
+  onOpenStats,
+}: FocusViewProps) {
   const { t } = useI18n();
   const { state, commit: moveSwitch } = store;
 
-  const [logOpen, setLogOpen] = useState(false);
   /** Held back until after mount so the restore does not replay as a slide —
       the track is painted where it belongs on the first frame instead of
       travelling there from the idle panel. */
@@ -278,11 +284,10 @@ export function FocusView({ store, lists, sidebarListId }: FocusViewProps) {
     [moveSwitch, sidebarListId]
   );
 
-  // The arrow keys mirror the slide — but not while the log is open, and not
-  // while a field has the caret, where an arrow means "move the cursor".
+  // The arrow keys mirror the slide — but not while a field has the caret,
+  // where an arrow means "move the cursor".
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (logOpen) return;
       const target = event.target as HTMLElement | null;
       if (
         target !== null &&
@@ -304,7 +309,7 @@ export function FocusView({ store, lists, sidebarListId }: FocusViewProps) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [flip, logOpen]);
+  }, [flip]);
 
   const onPointerDown = (event: ReactPointerEvent<HTMLSpanElement>) => {
     const el = trackRef.current;
@@ -486,19 +491,8 @@ export function FocusView({ store, lists, sidebarListId }: FocusViewProps) {
           reference — no card, no hairline above it, nothing around it but the
           page's own ground. */}
       <div className="shrink-0 px-6 pb-8">
-        <DayRail spans={store.spans} lists={lists} onOpen={() => setLogOpen(true)} />
+        <DayRail spans={store.spans} lists={lists} onOpen={onOpenStats} />
       </div>
-
-      <FocusLog
-        open={logOpen}
-        spans={store.spans}
-        lists={lists}
-        onClose={() => setLogOpen(false)}
-        onReschedule={store.reschedule}
-        onSplit={store.split}
-        onDelete={store.remove}
-        onSetList={store.setList}
-      />
     </main>
   );
 }

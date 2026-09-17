@@ -114,9 +114,6 @@ const zh = {
   "sidebar.listActions": "{name} 的操作",
   "sidebar.renameList": "重命名",
   "sidebar.deleteList": "删除清单",
-  "sidebar.overallProgress": "总体进度",
-  "sidebar.overallProgressAria": "总体进度 {progress}%",
-  "sidebar.percentDone": "{progress}% 已完成",
   "sidebar.deleteListTitle": "删除清单「{name}」？",
   "sidebar.deleteListBody":
     "清单会被移除，其中的任务不会被删除，而是移动到剩下的第一个清单里。",
@@ -146,6 +143,16 @@ const zh = {
   /* ── Language ────────────────────────────────────────────── */
   "language.aria": "语言设置",
   "language.label": "语言",
+
+  /* ── Screens & settings page ─────────────────────────────── */
+  "screen.stats": "统计",
+  "screen.settings": "设置",
+  "settings.sectionAppearance": "外观",
+  "settings.sectionLanguage": "语言",
+  "settings.sectionSidebar": "侧边栏",
+  "settings.sidebarHint": "选择在侧边栏中显示哪些视图。",
+  "settings.sectionData": "数据",
+  "settings.theme": "主题",
 
   /* ── Toolbar ─────────────────────────────────────────────── */
   "toolbar.searchPlaceholder": "搜索任务…",
@@ -281,7 +288,6 @@ const zh = {
 
   /* ── Focus · the log sheet ───────────────────────────────── */
   "focus.log.title": "专注日志",
-  "focus.log.close": "关闭",
   "focus.log.stretches": "逐段记录",
   "focus.log.emptyToday": "今天还没有记录有用时间。",
   "focus.log.emptyDay": "那天没有记录有用时间。",
@@ -470,9 +476,6 @@ const en: Record<MessageKey, Message> = {
   "sidebar.listActions": "Actions for {name}",
   "sidebar.renameList": "Rename",
   "sidebar.deleteList": "Delete list",
-  "sidebar.overallProgress": "Overall",
-  "sidebar.overallProgressAria": "Overall progress {progress}%",
-  "sidebar.percentDone": "{progress}% complete",
   "sidebar.deleteListTitle": "Delete “{name}”?",
   "sidebar.deleteListBody":
     "The list is removed. Its tasks are not deleted — they move to the first remaining list.",
@@ -503,6 +506,16 @@ const en: Record<MessageKey, Message> = {
   /* ── Language ────────────────────────────────────────────── */
   "language.aria": "Language settings",
   "language.label": "Language",
+
+  /* ── Screens & settings page ─────────────────────────────── */
+  "screen.stats": "Statistics",
+  "screen.settings": "Settings",
+  "settings.sectionAppearance": "Appearance",
+  "settings.sectionLanguage": "Language",
+  "settings.sectionSidebar": "Sidebar",
+  "settings.sidebarHint": "Choose which views appear in the sidebar.",
+  "settings.sectionData": "Data",
+  "settings.theme": "Theme",
 
   /* ── Toolbar ─────────────────────────────────────────────── */
   "toolbar.searchPlaceholder": "Search tasks…",
@@ -644,7 +657,6 @@ const en: Record<MessageKey, Message> = {
 
   /* ── Focus · the log sheet ───────────────────────────────── */
   "focus.log.title": "Your focus log",
-  "focus.log.close": "Close",
   "focus.log.stretches": "Stretch by stretch",
   "focus.log.emptyToday": "Nothing logged as useful yet today.",
   "focus.log.emptyDay": "Nothing logged as useful that day.",

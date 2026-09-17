@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   AlertTriangle,
+  BarChart3,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
@@ -8,6 +9,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Settings,
   Star,
   Timer,
   Trash2,
@@ -30,17 +32,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { SubsectionLabel } from "@/components/ui/section";
-import { AppearanceMenu } from "@/components/appearance-menu";
-import { LanguageMenu } from "@/components/language-menu";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
+import { HIDEABLE_VIEWS, type AppSettings } from "@/lib/settings";
 import type { MessageKey } from "@/lib/messages";
-import type { TodoStats } from "@/lib/selectors";
-import { paletteVar, type TodoList, type ViewId } from "@/lib/types";
+import type { TodoList, ViewId } from "@/lib/types";
+import { paletteVar } from "@/lib/types";
+import type { Screen } from "@/lib/types";
 
 interface ViewDef {
   id: ViewId;
@@ -75,12 +75,14 @@ export interface SidebarProps {
   listCounts: Record<string, number>;
   activeView: ViewId;
   activeListId: string | null;
-  /** Whether the focus screen has the main area — it is a screen of its own
-      rather than another filter on the todo list, so it is neither a view nor
-      a list. */
-  focusMode: boolean;
+  /** Which screen fills the main area — the sidebar never leaves, so it needs
+      to know what it is sitting beside. */
+  screen: Screen;
+  /** Which views are hidden, straight from the settings page. */
+  settings: AppSettings;
   onSelectFocus: () => void;
-  stats: TodoStats;
+  onSelectStats: () => void;
+  onSelectSettings: () => void;
   onSelectView: (view: ViewId) => void;
   onSelectList: (listId: string | null) => void;
   onCreateList: () => void;
@@ -94,9 +96,11 @@ export function Sidebar({
   listCounts,
   activeView,
   activeListId,
-  focusMode,
+  screen,
+  settings,
   onSelectFocus,
-  stats,
+  onSelectStats,
+  onSelectSettings,
   onSelectView,
   onSelectList,
   onCreateList,
@@ -105,7 +109,6 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<TodoList | null>(null);
-  const complete = stats.total > 0 && stats.done === stats.total;
 
   return (
     <aside className="no-select flex w-[264px] shrink-0 flex-col border-r border-border bg-sidebar">
@@ -117,42 +120,24 @@ export function Sidebar({
               {t("sidebar.sectionViews")}
             </SubsectionLabel>
             <nav className="mt-2 flex flex-col gap-0.5">
-              {/*
-               * 专注 stands above the views rather than among them. The others
-               * are all filters over the same list of tasks; this one is a
-               * screen of its own, and the hairline is what says so — a row
-               * that looked exactly like its neighbours would read as another
-               * way of narrowing the tasks.
-               *
-               * No count on it, either. Every row around it carries a number of
-               * tasks; the focus screen has none to carry, and a `0` there
-               * would be a lie rather than an absence.
-               */}
-              <button
-                type="button"
-                onClick={onSelectFocus}
-                aria-current={focusMode ? "page" : undefined}
-                className={cn(rowLayout, focusMode ? rowActive : rowIdle)}
-              >
-                {/* No green on the icon, even while this screen is up. The
-                    row's own active fill already says which screen is showing,
-                    and every other row in the sidebar lets its icon take the
-                    row's colour — a second colour here would make this one row
-                    speak a different language from the rest. */}
-                <Icon icon={Timer} size="sm" />
-                <span className="flex-1 truncate text-left">
-                  {t("focus.title")}
-                </span>
-              </button>
-
-              <Separator className="mx-3 my-2 w-auto" />
-
               {VIEWS.map((view) => {
+                // A view switched off in settings simply has no row. The count
+                // still exists (the tray uses it); the sidebar just stops
+                // printing it.
+                if (
+                  HIDEABLE_VIEWS.includes(view.id as never) &&
+                  settings.hiddenViews[view.id as never]
+                ) {
+                  return null;
+                }
+
                 // Nothing below the hairline is "current" while the focus screen
                 // has the main area: these views all describe a list of tasks
                 // that is not on screen.
                 const active =
-                  !focusMode && activeView === view.id && activeListId === null;
+                  screen === "todos" &&
+                  activeView === view.id &&
+                  activeListId === null;
                 const count = counts[view.id];
                 const alarming = view.id === "overdue" && count > 0;
                 return (
@@ -209,7 +194,7 @@ export function Sidebar({
                 onClick={() => onSelectList(null)}
                 className={cn(
                   rowLayout,
-                  !focusMode && activeListId === null ? rowActive : rowIdle
+                  screen === "todos" && activeListId === null ? rowActive : rowIdle
                 )}
               >
                 <span className="h-2 w-2 shrink-0 rounded-full bg-foreground-faint" />
@@ -219,7 +204,7 @@ export function Sidebar({
               </button>
 
               {lists.map((list) => {
-                const active = !focusMode && activeListId === list.id;
+                const active = screen === "todos" && activeListId === list.id;
                 const count = listCounts[list.id] ?? 0;
                 return (
                   <div
@@ -288,40 +273,59 @@ export function Sidebar({
         </div>
       </ScrollArea>
 
-      {/* Footer — overall progress, then the two settings menus */}
-      <div className="border-t border-border px-5 py-4">
-        <div className="flex items-center gap-3">
-          <SubsectionLabel className="shrink-0 text-xs">
-            {t("sidebar.overallProgress")}
-          </SubsectionLabel>
-          <Progress
-            className="min-w-0 flex-1"
-            value={stats.progress}
-            variant="thin"
-            color={complete ? "bg-green" : "bg-accent"}
-            aria-label={t("sidebar.overallProgressAria", {
-              progress: stats.progress,
-            })}
-          />
-          <span className="shrink-0 font-mono text-xs tabular-nums text-foreground-subtle">
-            {stats.done}/{stats.total}
-          </span>
-        </div>
-
-        {/*
-         * `gap-1` between the two icon buttons rather than `justify-between`:
-         * they are one cluster of settings, and the progress figure has already
-         * claimed the other end of the row.
-         */}
-        <div className="mt-3 flex items-center justify-between">
-          <span className="font-mono text-xs tabular-nums text-foreground-faint">
-            {t("sidebar.percentDone", { progress: stats.progress })}
-          </span>
-          <div className="flex items-center gap-1">
-            <LanguageMenu />
-            <AppearanceMenu />
-          </div>
-        </div>
+      {/*
+       * Footer — the three doors that are not filters over the tasks. The old
+       * footer (overall progress, percent, the language and appearance menus)
+       * is gone: the progress belonged to a view of the tasks, and both menus
+       * have a roomier home on the settings page now. What stays is a trio of
+       * plain rows, styled like every other row above them — 专注, 统计 and
+       * 设置 are screens, not toggles, and the row shape says so. Pinned below
+       * the scroll area so they hold their place no matter how long the lists
+       * above them grow.
+       */}
+      <div className="border-t border-border px-3 py-3">
+        <nav className="flex flex-col gap-0.5">
+          {/* No count on focus, either. Every view row above carries a number
+              of tasks; the focus screen has none to carry, and a `0` there
+              would be a lie rather than an absence. And no green on the icon —
+              every row here lets its icon take the row's colour. */}
+          <button
+            type="button"
+            onClick={onSelectFocus}
+            aria-current={screen === "focus" ? "page" : undefined}
+            className={cn(rowLayout, screen === "focus" ? rowActive : rowIdle)}
+          >
+            <Icon icon={Timer} size="sm" />
+            <span className="flex-1 truncate text-left">
+              {t("focus.title")}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onSelectStats}
+            aria-current={screen === "stats" ? "page" : undefined}
+            className={cn(rowLayout, screen === "stats" ? rowActive : rowIdle)}
+          >
+            <Icon icon={BarChart3} size="sm" />
+            <span className="flex-1 truncate text-left">
+              {t("screen.stats")}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onSelectSettings}
+            aria-current={screen === "settings" ? "page" : undefined}
+            className={cn(
+              rowLayout,
+              screen === "settings" ? rowActive : rowIdle
+            )}
+          >
+            <Icon icon={Settings} size="sm" />
+            <span className="flex-1 truncate text-left">
+              {t("screen.settings")}
+            </span>
+          </button>
+        </nav>
       </div>
 
       <AlertDialog
