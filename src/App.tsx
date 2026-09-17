@@ -56,6 +56,7 @@ import {
 } from "@/lib/selectors";
 import { useTodoStore, type TodoDraft } from "@/lib/store";
 import { useFocusStore } from "@/lib/focus-store";
+import { useAchievementToasts } from "@/lib/achievement-toasts";
 import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
@@ -112,6 +113,11 @@ export default function App() {
    * store's own timer is what closes a forgotten one at the cap.
    */
   const focus = useFocusStore();
+
+  // A milestone earned anywhere in the app announces itself, corner-side —
+  // the log is watched here, not in the stats page, so the toast does not
+  // wait for the reader to go looking for it.
+  useAchievementToasts(focus.spans, language);
 
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   /** Which screen fills the space beside the sidebar — the task list, the
@@ -305,6 +311,7 @@ export default function App() {
         listId: targetListId,
         tags: draft.tags,
         subtasks: [],
+        recur: null,
       });
       toast.success(t("toast.taskAdded"), {
         description: t("toast.taskAddedBody", {
@@ -331,6 +338,7 @@ export default function App() {
           listId: draft.listId,
           tags: draft.tags,
           subtasks: draft.subtasks,
+          recur: draft.recur,
         });
         toast(t("toast.taskUpdated"), { description: draft.title.trim() });
       } else {
@@ -364,6 +372,43 @@ export default function App() {
       });
     },
     [duplicateTodo, removeTodo, t]
+  );
+
+  /**
+   * The one completion path. A repeating task completed here leaves its next
+   * occurrence behind, and the toast names that fact — with an undo that
+   * simply deletes the spawned task, leaving the original completed.
+   */
+  const handleToggle = useCallback(
+    (id: string) => {
+      const spawned = toggleTodo(id);
+      if (!spawned) return;
+      toast.success(t("toast.recurSpawned"), {
+        description: spawned.title,
+        action: {
+          label: t("common.undo"),
+          onClick: () => removeTodo(spawned.id),
+        },
+      });
+    },
+    [toggleTodo, removeTodo, t]
+  );
+
+  /** The checklist's way of completing a parent — same spawn-and-toast as the
+      checkbox above, so the two paths never drift apart. */
+  const handleToggleSubtask = useCallback(
+    (todoId: string, subtaskId: string) => {
+      const spawned = toggleSubtask(todoId, subtaskId);
+      if (!spawned) return;
+      toast.success(t("toast.recurSpawned"), {
+        description: spawned.title,
+        action: {
+          label: t("common.undo"),
+          onClick: () => removeTodo(spawned.id),
+        },
+      });
+    },
+    [toggleSubtask, removeTodo, t]
   );
 
   const handleClearCompleted = useCallback(() => {
@@ -521,6 +566,7 @@ export default function App() {
         ) : screen === "stats" ? (
           <FocusStats
             spans={focus.spans}
+            todos={todos}
             lists={lists}
             onReschedule={focus.reschedule}
             onSplit={focus.split}
@@ -616,10 +662,10 @@ export default function App() {
                             todo={todo}
                             list={listById.get(todo.listId)}
                             showList={showRowList}
-                            onToggle={() => toggleTodo(todo.id)}
+                            onToggle={() => handleToggle(todo.id)}
                             onStar={() => toggleStar(todo.id)}
                             onToggleSubtask={(subId) =>
-                              toggleSubtask(todo.id, subId)
+                              handleToggleSubtask(todo.id, subId)
                             }
                             onEdit={() => openEdit(todo)}
                             onDuplicate={() => handleDuplicate(todo)}
@@ -627,7 +673,11 @@ export default function App() {
                             onSetPriority={(p) =>
                               updateTodo(todo.id, { priority: p })
                             }
-                            onSetDue={(d) => updateTodo(todo.id, { dueDate: d })}
+                            onSetDue={(d) =>
+  // Clearing the date un-anchors any repeat, keeping the invariant
+  // "recurring ⇒ has a due date" true everywhere, not just in the editor.
+  updateTodo(todo.id, d ? { dueDate: d } : { dueDate: null, recur: null })
+}
                           />
                         ))}
                       </div>
@@ -642,14 +692,20 @@ export default function App() {
                       todo={todo}
                       list={listById.get(todo.listId)}
                       showList={showRowList}
-                      onToggle={() => toggleTodo(todo.id)}
+                      onToggle={() => handleToggle(todo.id)}
                       onStar={() => toggleStar(todo.id)}
-                      onToggleSubtask={(subId) => toggleSubtask(todo.id, subId)}
+                      onToggleSubtask={(subId) =>
+                        handleToggleSubtask(todo.id, subId)
+                      }
                       onEdit={() => openEdit(todo)}
                       onDuplicate={() => handleDuplicate(todo)}
                       onDelete={() => handleDelete(todo)}
                       onSetPriority={(p) => updateTodo(todo.id, { priority: p })}
-                      onSetDue={(d) => updateTodo(todo.id, { dueDate: d })}
+                      onSetDue={(d) =>
+  // Clearing the date un-anchors any repeat, keeping the invariant
+  // "recurring ⇒ has a due date" true everywhere, not just in the editor.
+  updateTodo(todo.id, d ? { dueDate: d } : { dueDate: null, recur: null })
+}
                     />
                   ))}
                 </div>

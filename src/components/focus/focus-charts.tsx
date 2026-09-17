@@ -69,7 +69,7 @@ export function Metric({ label, value }: { label: string; value: string }) {
       <div className="text-xs font-medium tracking-wide text-foreground-muted">
         {label}
       </div>
-      <div className="mt-2 font-display text-xl font-semibold leading-none tracking-tight tabular-nums text-foreground">
+      <div className="mt-2 whitespace-nowrap font-display text-xl font-semibold leading-none tracking-tight tabular-nums text-foreground">
         {value}
       </div>
     </div>

@@ -25,9 +25,30 @@ export interface Todo {
   listId: string;
   tags: string[];
   subtasks: Subtask[];
+  /** Repeat rule; `null` = a one-off task. See `Recur` above. */
+  recur: Recur | null;
   createdAt: number;
   completedAt: number | null;
 }
+
+/**
+ * A task's repeat rule.
+ *
+ * `daily` carries its own interval — every 1 day is 每天, every 3 days is
+ * 每 3 天 — while `weekdays` names whole weekdays (0 = Sunday … 6 = Saturday)
+ * and repeats on whichever of them come next, in calendar order rather than in
+ * the order picked. The bare kinds (`weekly` / `monthly` / `yearly`) advance
+ * the due date by one of their unit, and a month or year that has no such day
+ * (Jan 31 → Feb, Feb 29 → a common year) clamps to that unit's last day.
+ *
+ * `null` on a `Todo` means the task does not repeat.
+ */
+export type Recur =
+  | { kind: "daily"; interval: number }
+  | { kind: "weekly" }
+  | { kind: "weekdays"; days: number[] }
+  | { kind: "monthly" }
+  | { kind: "yearly" };
 
 export interface TodoList {
   id: string;

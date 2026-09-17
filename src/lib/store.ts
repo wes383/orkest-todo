@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { uid } from "@/lib/utils";
 import { translate, type Language } from "@/lib/messages";
-import type { Priority, Subtask, Todo, TodoList } from "@/lib/types";
+import type { Priority, Recur, Subtask, Todo, TodoList } from "@/lib/types";
+import { nextDueDate } from "@/lib/recur";
 
 const STORAGE_KEY = "orkest-todo.v1";
 
@@ -13,6 +14,8 @@ export interface TodoDraft {
   listId: string;
   tags: string[];
   subtasks: Subtask[];
+  /** `null` = does not repeat. */
+  recur: Recur | null;
 }
 
 interface PersistedState {
@@ -23,6 +26,33 @@ interface PersistedState {
 
 function newSubtask(title: string): Subtask {
   return { id: uid("sub"), title, done: false };
+}
+
+/**
+ * The next occurrence of a repeating task — a fresh task with the rule's next
+ * due date and an unticked checklist. `undefined` when the task does not
+ * repeat, has no due date to advance from, or its rule names no next day.
+ */
+function spawnNextOccurrence(target: Todo): Todo | undefined {
+  if (!target.recur || !target.dueDate) return undefined;
+  const nextDue = nextDueDate(target.recur, target.dueDate);
+  if (!nextDue) return undefined;
+  return {
+    ...target,
+    id: uid("todo"),
+    done: false,
+    completedAt: null,
+    createdAt: Date.now(),
+    dueDate: nextDue,
+    subtasks: target.subtasks.map((s) => newSubtask(s.title)),
+  };
+}
+
+/** Copies `task` into `todos` directly after the task with id `afterId`. */
+function insertAfter(todos: Todo[], afterId: string, task: Todo): Todo[] {
+  const index = todos.findIndex((t) => t.id === afterId);
+  if (index < 0) return todos;
+  return [...todos.slice(0, index + 1), task, ...todos.slice(index + 1)];
 }
 
 /** Picks a due date relative to today so seeded data always looks current. */
@@ -225,6 +255,7 @@ function seedTodos(lang: Language): Todo[] {
     listId: partial.listId,
     tags: partial.tags ?? [],
     subtasks: partial.subtasks ?? [],
+    recur: partial.recur ?? null,
     createdAt: now + (partial.createdAt ?? 0),
     completedAt:
       partial.completedAt == null ? null : now + partial.completedAt,
@@ -308,6 +339,7 @@ export function useTodoStore(lang: Language) {
         listId: draft.listId,
         tags: draft.tags,
         subtasks: draft.subtasks,
+        recur: draft.recur,
         createdAt: Date.now(),
         completedAt: null,
       };
@@ -326,10 +358,28 @@ export function useTodoStore(lang: Language) {
     [patchTodos]
   );
 
+  /**
+   * Toggles a task, and — when the toggle *completes* a repeating one — spawns
+   * its next occurrence straight after it.
+   *
+   * Returns the spawned task so the caller can offer an undo toast. The spawn
+   * is resolved from current state *outside* the updater (the same pattern
+   * `removeTodo` uses) because updater functions run during commit, not at
+   * call time, and a return value has to be known now.
+   *
+   * The next occurrence is a fresh task, not the same one rolled forward: the
+   * completed instance stays in 已完成 as history, and the new one starts with
+   * an unticked checklist. Un-completing never spawns anything.
+   */
   const toggleTodo = useCallback(
-    (id: string) => {
-      patchTodos((todos) =>
-        todos.map((t) =>
+    (id: string): Todo | undefined => {
+      const target = state.todos.find((t) => t.id === id);
+      if (!target) return undefined;
+      const completing = !target.done;
+      const spawned = completing ? spawnNextOccurrence(target) : undefined;
+
+      patchTodos((todos) => {
+        const toggled = todos.map((t) =>
           t.id === id
             ? {
                 ...t,
@@ -341,10 +391,13 @@ export function useTodoStore(lang: Language) {
                   : t.subtasks,
               }
             : t
-        )
-      );
+        );
+        return spawned ? insertAfter(toggled, id, spawned) : toggled;
+      });
+
+      return spawned;
     },
-    [patchTodos]
+    [patchTodos, state.todos]
   );
 
   const toggleStar = useCallback(
@@ -356,15 +409,30 @@ export function useTodoStore(lang: Language) {
     [patchTodos]
   );
 
+  /**
+   * Ticks one box. The parent follows its checklist — all boxes ticked ⇒ task
+   * done — and completing the parent this way is still a completion: a
+   * repeating task spawns its next occurrence here exactly as it would have
+   * from the checkbox on the card, so the two completion paths stay in step.
+   */
   const toggleSubtask = useCallback(
-    (todoId: string, subtaskId: string) => {
-      patchTodos((todos) =>
-        todos.map((t) => {
+    (todoId: string, subtaskId: string): Todo | undefined => {
+      const target = state.todos.find((t) => t.id === todoId);
+      // Only a transition *into* done spawns; ticking a box on an already
+      // complete parent (or unticking one) never does.
+      const willComplete =
+        target != null &&
+        !target.done &&
+        target.subtasks.some((s) => s.id === subtaskId && !s.done) &&
+        target.subtasks.filter((s) => s.id !== subtaskId).every((s) => s.done);
+      const spawned = willComplete ? spawnNextOccurrence(target) : undefined;
+
+      patchTodos((todos) => {
+        const mapped = todos.map((t) => {
           if (t.id !== todoId) return t;
           const subtasks = t.subtasks.map((s) =>
             s.id === subtaskId ? { ...s, done: !s.done } : s
           );
-          // The parent follows its checklist: all boxes ticked ⇒ task done.
           const allDone = subtasks.length > 0 && subtasks.every((s) => s.done);
           return {
             ...t,
@@ -372,10 +440,13 @@ export function useTodoStore(lang: Language) {
             done: allDone,
             completedAt: allDone ? t.completedAt ?? Date.now() : null,
           };
-        })
-      );
+        });
+        return spawned ? insertAfter(mapped, todoId, spawned) : mapped;
+      });
+
+      return spawned;
     },
-    [patchTodos]
+    [patchTodos, state.todos]
   );
 
   const removeTodo = useCallback(

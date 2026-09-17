@@ -31,7 +31,8 @@ import { Hint, SubsectionLabel } from "@/components/ui/section";
 import { Textarea } from "@/components/ui/textarea";
 import { addDays, fromISODate, todayISO, toISODate } from "@/lib/date";
 import { useI18n, type I18nValue } from "@/lib/i18n";
-import { uid } from "@/lib/utils";
+import { weekdayName } from "@/lib/recur";
+import { cn, uid } from "@/lib/utils";
 import type { TodoDraft } from "@/lib/store";
 import {
   PRIORITY_META,
@@ -39,6 +40,7 @@ import {
   TITLE_MAX,
   paletteVar,
   type Priority,
+  type Recur,
   type Subtask,
   type Todo,
   type TodoList,
@@ -74,6 +76,9 @@ function dueShortcuts(t: I18nValue["t"]): DatePickerShortcut[] {
   ];
 }
 
+/** Weekday indexes for the repeat-day toggles: 0 = Sunday … 6 = Saturday. */
+const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
+
 interface FormState {
   title: string;
   notes: string;
@@ -82,6 +87,7 @@ interface FormState {
   listId: string;
   tags: string[];
   subtasks: Subtask[];
+  recur: Recur | null;
 }
 
 function emptyForm(listId: string): FormState {
@@ -93,6 +99,7 @@ function emptyForm(listId: string): FormState {
     listId,
     tags: [],
     subtasks: [],
+    recur: null,
   };
 }
 
@@ -105,6 +112,7 @@ function formFromTodo(todo: Todo, fallbackListId: string): FormState {
     listId: todo.listId || fallbackListId,
     tags: [...todo.tags],
     subtasks: todo.subtasks.map((s) => ({ ...s })),
+    recur: todo.recur ?? null,
   };
 }
 
@@ -123,7 +131,7 @@ export function TodoEditorDialog({
   defaultListId,
   onSubmit,
 }: TodoEditorDialogProps) {
-  const { t, locale } = useI18n();
+  const { t, language, locale } = useI18n();
   const shortcuts = useMemo(() => dueShortcuts(t), [t]);
   const [form, setForm] = useState<FormState>(() => emptyForm(defaultListId));
   const [tagInput, setTagInput] = useState("");
@@ -166,6 +174,7 @@ export function TodoEditorDialog({
       listId: form.listId,
       tags: form.tags,
       subtasks: form.subtasks,
+      recur: form.recur,
     });
     onOpenChange(false);
   };
@@ -305,10 +314,140 @@ export function TodoEditorDialog({
                  * mode flip is what once made the first Clear click a no-op. */
                 value={form.dueDate ? fromISODate(form.dueDate) : null}
                 onChange={(v) =>
-                  patch({ dueDate: v instanceof Date ? toISODate(v) : "" })
+                  patch({
+                    dueDate: v instanceof Date ? toISODate(v) : "",
+                    // A repeat is anchored to its due date; no date, no anchor.
+                    ...(v instanceof Date ? {} : { recur: null }),
+                  })
                 }
                 shortcuts={shortcuts}
               />
+            </div>
+
+            {/*
+             * Repeat — a kind picker, then whatever that kind needs spelled
+             * out. The select holds the *shape* of the rule and the widgets
+             * beside it hold the parameters; the two together write one `Recur`
+             * into the form. Switching kinds keeps the parameter that kind can
+             * use (the interval stays an interval, the days stay days), so a
+             * mis-picked kind is one click to undo, not a re-entry.
+             */}
+            <div>
+              <Label htmlFor="todo-recur">{t("recur.label")}</Label>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={form.recur ? form.recur.kind : "none"}
+                  /* Recurring needs a due date to advance from, so the picker
+                     sits idle until one exists — the hint below says why. */
+                  disabled={!form.dueDate}
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      patch({ recur: null });
+                    } else if (v === "daily") {
+                      patch({
+                        recur: {
+                          kind: "daily",
+                          interval:
+                            form.recur?.kind === "daily"
+                              ? form.recur.interval
+                              : 1,
+                        },
+                      });
+                    } else if (v === "weekdays") {
+                      patch({
+                        recur: {
+                          kind: "weekdays",
+                          days:
+                            form.recur?.kind === "weekdays" &&
+                            form.recur.days.length > 0
+                              ? form.recur.days
+                              : [1],
+                        },
+                      });
+                    } else {
+                      // weekly / monthly / yearly carry no parameters.
+                      patch({ recur: { kind: v } as Recur });
+                    }
+                  }}
+                >
+                  <SelectTrigger id="todo-recur">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("recur.none")}</SelectItem>
+                    <SelectItem value="daily">{t("recur.dailyItem")}</SelectItem>
+                    <SelectItem value="weekly">{t("recur.weekly")}</SelectItem>
+                    <SelectItem value="weekdays">
+                      {t("recur.weekdaysItem")}
+                    </SelectItem>
+                    <SelectItem value="monthly">{t("recur.monthly")}</SelectItem>
+                    <SelectItem value="yearly">{t("recur.yearly")}</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {form.recur?.kind === "daily" && (
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    aria-label={t("recur.intervalLabel")}
+                    className="w-24 shrink-0"
+                    value={form.recur.interval}
+                    onChange={(e) => {
+                      const n = Number.parseInt(e.target.value, 10);
+                      if (Number.isNaN(n)) return;
+                      patch({
+                        recur: {
+                          kind: "daily",
+                          interval: Math.min(365, Math.max(1, n)),
+                        },
+                      });
+                    }}
+                  />
+                )}
+              </div>
+
+              {form.recur?.kind === "weekdays" && (
+                <div
+                  role="group"
+                  aria-label={t("recur.weekdaysLabel")}
+                  className="mt-3 flex flex-wrap gap-1.5"
+                >
+                  {WEEKDAYS.map((day) => {
+                    const on = form.recur?.kind === "weekdays" && form.recur.days.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => {
+                          if (form.recur?.kind !== "weekdays") return;
+                          const days = on
+                            ? form.recur.days.filter((d) => d !== day)
+                            : [...form.recur.days, day];
+                          patch({ recur: { kind: "weekdays", days } });
+                        }}
+                        className={cn(
+                          "h-8 w-10 rounded-md border text-xs font-medium transition-colors duration-base",
+                          on
+                            ? "border-accent bg-accent text-accent-fg"
+                            : "border-border text-foreground-subtle hover:bg-hover-bg"
+                        )}
+                      >
+                        {weekdayName(day, language)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {form.recur ? (
+                <Hint className="mt-2">{t("recur.hint")}</Hint>
+              ) : (
+                !form.dueDate && (
+                  <Hint className="mt-2">{t("recur.needsDue")}</Hint>
+                )
+              )}
             </div>
           </section>
 
@@ -462,13 +601,13 @@ export function TodoEditorDialog({
 
         <DialogFooter>
           <span className="mr-auto flex items-center gap-1.5 text-xs text-foreground-subtle">
-            按
+            {t("editor.hintPress")}
             <Kbd className="text-[10px]">Ctrl</Kbd>
             <Kbd className="text-[10px]">Enter</Kbd>
-            保存
+            {t("editor.hintSave")}
           </span>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            {t("common.cancel")}
           </Button>
           <Button onClick={submit} disabled={!canSubmit}>
             {todo ? t("editor.save") : t("editor.add")}

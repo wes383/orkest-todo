@@ -31,6 +31,17 @@
  * The CSV export does not live here — it belongs with the other whole-app
  * settings, in the settings page, where "everything the app holds" is a more
  * honest home for it than the foot of a page of charts.
+ *
+ * ── The task side ──────────────────────────────────────────────────────────
+ *
+ * After the trend sit three cards and a second board that read the todo set
+ * instead of the log: completion (today / week / all time, per list), the
+ * fourteen-day compare (focus time beside tasks done), and the filed-vs-
+ * unfiled split of useful time. The milestone board carries the task ladders
+ * behind the focus ones. The figures never mix — a completion is stamped when
+ * a checkbox is ticked, a stretch when the switch is flipped — and the task
+ * cards ignore the scope picker, which is a reading of the log, not of the
+ * todos.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -92,9 +103,25 @@ import {
   type Milestone,
   type MilestoneGroup,
 } from "@/lib/focus-achievements";
+import { LOCALES, type Language } from "@/lib/messages";
 import { useI18n } from "@/lib/i18n";
+import {
+  taskListBreakdown,
+  taskStats,
+  usefulSplit,
+} from "@/lib/task-stats";
 import { cn } from "@/lib/utils";
-import { paletteVar, type TodoList } from "@/lib/types";
+import { paletteVar, type Todo, type TodoList } from "@/lib/types";
+
+/** The weekday names in the heat grid's own Monday-first order: 2024-01-01 was
+    a Monday, so the names fall straight out of the platform's calendar rather
+    than out of a second dictionary to keep in step. */
+function weekdayNames(lang: Language): string[] {
+  const format = new Intl.DateTimeFormat(LOCALES[lang], { weekday: "short" });
+  return Array.from({ length: 7 }, (_, index) =>
+    format.format(new Date(2024, 0, 1 + index))
+  );
+}
 
 /* ── Milestones ───────────────────────────────────────────────────────────
    The ring, the name and the two lines under it. The name and the rule arrive
@@ -356,6 +383,10 @@ function Arrow({ fragment }: { fragment: boolean }) {
 export interface FocusStatsProps {
   /** The whole log, oldest first — the page reads it, never owns it. */
   spans: FocusSpan[];
+  /** The whole todo set, done and not — the task-side cards read it, never
+      own it. Milestones on it are lifetime figures and ignore the scope
+      picker, which is a reading of the focus log, not of the todos. */
+  todos: Todo[];
   lists: TodoList[];
   /** Move the end of the stretch at `index` in the log. */
   onReschedule: (index: number, end: number) => void;
@@ -371,6 +402,7 @@ export interface FocusStatsProps {
 
 export function FocusStats({
   spans,
+  todos,
   lists,
   onReschedule,
   onSplit,
@@ -382,7 +414,7 @@ export function FocusStats({
   // Today is what a log is opened to check, so the averages start there instead
   // of on the week.
   const [period, setPeriod] = useState<Period>("day");
-  const [chart, setChart] = useState<"week" | "month">("week");
+  const [chart, setChart] = useState<"day" | "week" | "month">("week");
   /** Which slice of the log every reading on this sheet is about. */
   const [scope, setScope] = useState<Scope>(SCOPE_ALL);
   /** Which day the stretch list is showing, as a local midnight. `null` means
@@ -453,12 +485,24 @@ export function FocusStats({
   const figures = useMemo(() => {
     if (now === null || buckets === null) return null;
     const today = startOfDay(now);
+    // The last fourteen days, one bar a day — the finest grain the trend reads,
+    // for the stretches of history that a week smoothes away.
+    const days: { from: number; to: number; useful: number }[] = [];
+    for (let back = 13; back >= 0; back--) {
+      const from = shiftDays(today, -back);
+      days.push({
+        from,
+        to: shiftDays(from, 1),
+        useful: buckets.get(from)?.useful ?? 0,
+      });
+    }
     return {
       today,
       hours: hourTotals(scoped, now),
       heat: heatmap(scoped, now),
       best: bestStretch(scoped, now),
       topDay: bestDay(buckets),
+      days,
       weeks: weekBars(buckets, now, 8),
       months: monthBars(buckets, now, 12),
     };
@@ -522,10 +566,23 @@ export function FocusStats({
 
   /** The period in progress against the same run of days one week (or month)
       earlier: comparing a half-finished week against a whole one would read as a
-      collapse rather than as a week. */
+      collapse rather than as a week. The day window reads the last fourteen
+      days against the fourteen before them — the same shift the day chart
+      draws, so caption and bars never disagree. */
   const compare = useMemo(() => {
     if (now === null || buckets === null) return null;
     const today = startOfDay(now);
+
+    // On the day grain the caption compares today with yesterday — the only
+    // "previous period" a day has that says anything.
+    const now0 = totalOver(daysBetween(today, today), buckets);
+    const yesterday = totalOver(daysBetween(shiftDays(today, -1), shiftDays(today, -1)), buckets);
+
+    const day = totalOver(daysBetween(shiftDays(today, -13), today), buckets);
+    const dayBefore = totalOver(
+      daysBetween(shiftDays(today, -27), shiftDays(today, -14)),
+      buckets
+    );
 
     const weekFrom = startOfWeek(now);
     const week = totalOver(daysBetween(weekFrom, today), buckets);
@@ -548,7 +605,7 @@ export function FocusStats({
       buckets
     );
 
-    return { week, weekBefore, month, monthBefore };
+    return { today: now0, yesterday, day, dayBefore, week, weekBefore, month, monthBefore };
   }, [buckets, now]);
 
   /** The days' time, broken down by the list it went to. Read over the whole of
@@ -562,16 +619,91 @@ export function FocusStats({
 
   const fullestList = Math.max(...listTotals.map((total) => total.useful), 1);
 
-  /** The milestones, grouped as they are shown, and the tally that heads them:
-      how many are behind the reader out of how many there are. */
-  const board = useMemo(
+  /** The todos cut down to the picker's list, the way the log is — the task
+      figures follow the scope like every other reading on this page. A todo
+      always wears a list, so "unassigned" can only catch tasks whose list was
+      deleted out from under them; on "all" nothing is filtered. */
+  const scopedTodos = useMemo(() => {
+    if (effectiveScope === SCOPE_ALL) return todos;
+    return todos.filter((todo) =>
+      effectiveScope === SCOPE_UNASSIGNED
+        ? todo.listId === "" || !lists.some((list) => list.id === todo.listId)
+        : todo.listId === effectiveScope
+    );
+  }, [todos, effectiveScope, lists]);
+
+  /** The task-side figures, over the scoped todo set — the picker decides
+      which tasks count, same as it decides which stretches do. The milestone
+      board stays on the whole set: a ladder is a lifetime record, not a
+      reading of one list. */
+  const tasks = useMemo(
+    () => (now === null ? null : taskStats(scopedTodos, now)),
+    [scopedTodos, now]
+  );
+
+  /** Task completions over the very windows the focus comparison reads — the
+      count that rides beside the focus delta in the trend captions. Same
+      halves-finished rule as the time side: a running week is matched against
+      the same run of days one week earlier, the last fourteen days against the
+      fourteen before them. */
+  const taskCompare = useMemo(() => {
+    if (now === null || tasks === null) return null;
+    const today = startOfDay(now);
+    // Inclusive of both ends — a day is in the window if its midnight is.
+    const sum = (from: number, to: number) => {
+      let total = 0;
+      for (const { day, count } of tasks.daily) {
+        if (day >= from && day <= to) total += count;
+      }
+      return total;
+    };
+
+    const now0 = sum(today, today);
+    const yesterday = sum(shiftDays(today, -1), shiftDays(today, -1));
+
+    const day = sum(shiftDays(today, -13), today);
+    const dayBefore = sum(shiftDays(today, -27), shiftDays(today, -14));
+
+    const weekFrom = startOfWeek(now);
+    const week = sum(weekFrom, today);
+    const weekBefore = sum(shiftDays(weekFrom, -7), shiftDays(today, -7));
+
+    const d = new Date(today);
+    const monthFrom = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    const elapsed = daysBetween(monthFrom, today).length;
+    const beforeFrom = new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime();
+    const beforeLast = new Date(d.getFullYear(), d.getMonth(), 0).getTime();
+    const month = sum(monthFrom, today);
+    const monthBefore = sum(
+      beforeFrom,
+      Math.min(shiftDays(beforeFrom, elapsed - 1), beforeLast)
+    );
+
+    return { today: now0, yesterday, day, dayBefore, week, weekBefore, month, monthBefore };
+  }, [tasks, now]);
+
+  const taskRows = useMemo(
+    () => taskListBreakdown(scopedTodos, lists),
+    [scopedTodos, lists]
+  );
+
+  /** Where the logged focus time went, filed against unfiled — read over the
+      scoped log, so the card follows the picker like every other card. */
+  const split = useMemo(
+    () => (now === null ? null : usefulSplit(scoped, now)),
+    [scoped, now]
+  );
+
+  /** The milestones, grouped as they are shown, with the tally behind the
+      card's corner: how many are earned out of how many there are. */
+  const focusBoard = useMemo(
     () =>
       now === null || buckets === null
         ? []
         : milestones(scoped, buckets, now, language),
     [scoped, buckets, now, language]
   );
-  const boardItems = board.flatMap((group) => group.items);
+  const boardItems = focusBoard.flatMap((group) => group.items);
   const boardEarned = boardItems.filter((item) => item.reached).length;
 
   /** The name a list wears now, or `null` for the unassigned bucket — which the
@@ -701,27 +833,132 @@ export function FocusStats({
 
   const hours = figures?.hours ?? [];
   const peak = peakHour(hours);
+  // The strongest hour is an hour-of-day read across every week, so the day it
+  // names comes off the heat grid: the weekday whose cell in that hour column
+  // holds the most. Ties share the line.
+  const peakDays =
+    peak === null || figures === null
+      ? []
+      : (() => {
+          const column = figures.heat.map((row) => row[peak]);
+          const best = Math.max(...column);
+          if (best <= 0) return [];
+          return column.flatMap((ms, index) => (ms === best ? [index] : []));
+        })();
+  const peakDayNames = weekdayNames(language)
+    .filter((_, index) => peakDays.includes(index))
+    .join(language === "zh" ? "、" : ", ");
   const dayUseful =
     buckets === null || view === null ? 0 : (buckets.get(view)?.useful ?? 0);
   const onToday = figures !== null && view !== null && view === figures.today;
   const chartBars =
-    figures === null ? [] : chart === "week" ? figures.weeks : figures.months;
-  const chartValue = (chart === "week" ? compare?.week : compare?.month) ?? 0;
+    figures === null
+      ? []
+      : chart === "week"
+        ? figures.weeks
+        : chart === "month"
+          ? figures.months
+          : figures.days;
+  const chartValue =
+    (chart === "day"
+      ? compare?.today
+      : chart === "week"
+        ? compare?.week
+        : compare?.month) ?? 0;
   const chartBefore =
-    (chart === "week" ? compare?.weekBefore : compare?.monthBefore) ?? 0;
+    (chart === "day"
+      ? compare?.yesterday
+      : chart === "week"
+        ? compare?.weekBefore
+        : compare?.monthBefore) ?? 0;
+  const chartDoneValue =
+    (chart === "day"
+      ? taskCompare?.today
+      : chart === "week"
+        ? taskCompare?.week
+        : taskCompare?.month) ?? 0;
+  const chartDoneBefore =
+    (chart === "day"
+      ? taskCompare?.yesterday
+      : chart === "week"
+        ? taskCompare?.weekBefore
+        : taskCompare?.monthBefore) ?? 0;
+
+  /** What the picker's grain calls the stretch of days in progress — "今日" on
+      days, "本周" on weeks. The caption that measures against the one before
+      uses a shorter word for the same span, so "上一个14天" reads as speech
+      rather than as two labels glued together. */
+  const rangeLabel =
+    chart === "day"
+      ? t("focus.log.today")
+      : chart === "week"
+        ? t("focus.log.thisWeek")
+        : t("focus.log.thisMonth");
+  const rangeWord =
+    chart === "day"
+      ? t("focus.log.range.day")
+      : chart === "week"
+        ? t("focus.log.thisWeek")
+        : t("focus.log.thisMonth");
   const trendCaption =
     compare === null
       ? ""
-      : chartValue === 0 && chartBefore === 0
-        ? t("focus.log.trend.none", {
-            range:
-              chart === "week" ? t("focus.log.thisWeek") : t("focus.log.thisMonth"),
-          })
-        : t("focus.log.trend.compare", {
-            range:
-              chart === "week" ? t("focus.log.thisWeek") : t("focus.log.thisMonth"),
-            delta: delta(chartValue, chartBefore),
-          });
+      : chart === "day"
+        ? chartValue === 0 && chartBefore === 0
+          ? t("focus.log.trend.day.none")
+          : t("focus.log.trend.day", {
+              delta: delta(chartValue, chartBefore),
+            })
+        : chartValue === 0 && chartBefore === 0
+          ? t("focus.log.trend.none", { range: rangeWord })
+          : t("focus.log.trend.compare", {
+              range: rangeWord,
+              delta: delta(chartValue, chartBefore),
+            });
+
+  /** The same story for the completions: the count now against the count then,
+      in its own sentence under the time's. */
+  const taskDiff = chartDoneValue - chartDoneBefore;
+  const taskTrendCaption =
+    taskCompare === null
+      ? ""
+      : chart === "day"
+        ? taskDiff === 0
+          ? t("focus.log.trend.tasks.day.same")
+          : t("focus.log.trend.tasks.day", {
+              delta: `${taskDiff > 0 ? "+" : "−"}${Math.abs(taskDiff)}`,
+            })
+        : taskDiff === 0
+          ? t("focus.log.trend.tasks.same", { range: rangeWord })
+          : t("focus.log.trend.tasks.compare", {
+              range: rangeWord,
+              delta: `${taskDiff > 0 ? "+" : "−"}${Math.abs(taskDiff)}`,
+            });
+
+  /** `9/17` — the tick a day wears under the day chart. Built on the locale's
+      own numeric date, so the shape follows the language. */
+  const dayTick = useCallback(
+    (day: number) =>
+      new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" })
+        .format(new Date(day)),
+    [locale]
+  );
+
+  /** Completions summed over the same bars the focus trend draws — week or
+      month, whichever the picker says — so the two lines sit on identical
+      spans and can be read against each other honestly. A day with no
+      completions simply adds nothing, and the running bar counts what today
+      has already earned. */
+  const chartDone = useMemo(() => {
+    if (tasks === null) return [];
+    return chartBars.map((bar) => {
+      let sum = 0;
+      for (const { day, count } of tasks.daily) {
+        if (day >= bar.from && day < bar.to) sum += count;
+      }
+      return sum;
+    });
+  }, [chartBars, tasks]);
 
   const scopeOptions: {
     key: Scope;
@@ -730,11 +967,6 @@ export function FocusStats({
     color?: string;
   }[] = [
     { key: SCOPE_ALL, label: t("focus.log.scopeAll") },
-    {
-      key: SCOPE_UNASSIGNED,
-      label: t("focus.unassigned"),
-      color: "var(--focus-unassigned)",
-    },
     ...lists.map((list) => ({
       key: list.id as Scope,
       label: list.name,
@@ -766,8 +998,11 @@ export function FocusStats({
                     card that says where the hours went, and it carries the
                     scope picker that rescales every other card on the sheet. */}
                 <div className="grid items-start gap-5 xl:grid-cols-12">
+                  {/* Each column is its own stack so cards flow tightly: in
+                      a shared row grid the row is held open by the tallest
+                      card in it, stranding whitespace under short ones. */}
+                  <div className="flex flex-col gap-5 xl:col-span-5">
                   <Card
-                    className="xl:col-span-5"
                     title={t("focus.log.byList")}
                     action={
                       <Select
@@ -806,6 +1041,32 @@ export function FocusStats({
                         {t("focus.log.byList.empty")}
                       </p>
                     ) : (
+                      <>
+                        {/* The time half gets its own caption, mirroring the
+                            task half's below, so the card reads as two labeled
+                            sections rather than one bare list. */}
+                        <p className="mb-3 text-xs font-medium tracking-wide text-foreground-muted">
+                          {t("focus.log.byList.time")}
+                        </p>
+                      {/* Filed against unfiled, read before the bars: how much
+                          of the log the bars below actually account for. */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <Metric
+                          label={t("stats.split.filed")}
+                          value={duration(split?.filed ?? 0, language)}
+                        />
+                        <Metric
+                          label={t("stats.split.unfiled")}
+                          value={duration(split?.unfiled ?? 0, language)}
+                        />
+                        <Metric
+                          label={t("stats.split.share")}
+                          value={`${Math.round((split?.ratio ?? 0) * 100)}%`}
+                        />
+                      </div>
+                      <p className="mb-3 mt-5 text-xs font-medium tracking-wide text-foreground-muted">
+                        {t("focus.log.byList.timeByList")}
+                      </p>
                       <ul className="flex flex-col gap-3">
                         {listTotals.map((total) => (
                           <li key={total.listId ?? SCOPE_UNASSIGNED}>
@@ -838,14 +1099,202 @@ export function FocusStats({
                           </li>
                         ))}
                       </ul>
+                      </>
                     )}
-                    <p className="mt-5 text-sm leading-snug text-foreground-muted">
-                      {t("focus.log.byList.hint")}
-                    </p>
+
+                    {/* The task side of the same question, filed under the
+                        same picker: where the hours went above, what came out
+                        of them below. A hairline divides the two so the card
+                        reads as one list of readings rather than two cards
+                        glued together. The figures follow the picker like the
+                        durations do — pick a list, and both halves speak of
+                        that list alone. */}
+                    <div className="mt-6 border-t border-border pt-5">
+                      <p className="text-xs font-medium tracking-wide text-foreground-muted">
+                        {t("stats.tasks.title")}
+                      </p>
+                      <div className="mt-3 grid grid-cols-3 gap-3">
+                        <Metric
+                          label={t("stats.tasks.today")}
+                          value={t("stats.tasks.count", {
+                            n: tasks?.todayDone ?? 0,
+                          })}
+                        />
+                        <Metric
+                          label={t("stats.tasks.week")}
+                          value={t("stats.tasks.count", {
+                            n: tasks?.weekDone ?? 0,
+                          })}
+                        />
+                        <Metric
+                          label={t("stats.tasks.total")}
+                          value={t("stats.tasks.count", {
+                            n: tasks?.totalDone ?? 0,
+                          })}
+                        />
+                      </div>
+
+                      {/* Per-list completion, in the sidebar's order, each bar
+                          wearing its list's colour — the same shape the
+                          duration bars above keep, so the two read as one
+                          family. */}
+                      {taskRows.length > 0 && (
+                        <>
+                          <p className="mb-3 mt-5 text-xs font-medium tracking-wide text-foreground-muted">
+                            {t("stats.tasks.byList")}
+                          </p>
+                          <ul className="flex flex-col gap-3">
+                            {taskRows.map((row) => (
+                              <li key={row.listId}>
+                                <div className="flex items-baseline justify-between gap-4 text-sm">
+                                  <span className="truncate text-foreground">
+                                    {displayName(row.listId)}
+                                  </span>
+                                  <span className="shrink-0 tabular-nums text-foreground-muted">
+                                    {t("stats.tasks.ofCount", {
+                                      done: row.done,
+                                      total: row.total,
+                                    })}
+                                    {" · "}
+                                    {t("stats.tasks.pct", {
+                                      pct: Math.round(row.rate * 100),
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                  <span
+                                    className="block h-full rounded-full"
+                                    style={{
+                                      width: `${Math.max(2, row.rate * 100)}%`,
+                                      backgroundColor: colorOf(row.listId),
+                                    }}
+                                  />
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
                   </Card>
 
                   <Card
-                    className="xl:col-span-7"
+                    title={t("focus.log.averages")}
+                    hint={
+                      averages === null
+                        ? undefined
+                        : t("focus.log.days", { n: averages.days })
+                    }
+                    action={
+                      <Segmented
+                        value={period}
+                        options={PERIODS.map((option) => ({
+                          key: option.key,
+                          label: t(option.labelKey),
+                        }))}
+                        onChange={setPeriod}
+                        label={t("focus.log.period")}
+                      />
+                    }
+                  >
+                    <div className="grid grid-cols-2 gap-3">
+                      <Metric
+                        label={t("focus.log.perDay")}
+                        value={duration(averages?.perDay ?? 0, language)}
+                      />
+                      <Metric
+                        label={t("focus.log.share")}
+                        value={`${Math.round((averages?.share ?? 0) * 100)}%`}
+                      />
+                      <Metric
+                        label={t("focus.log.switches")}
+                        value={(averages?.switches ?? 0).toFixed(1)}
+                      />
+                      <Metric
+                        label={t("focus.log.perStretch")}
+                        value={duration(averages?.stretch ?? 0, language)}
+                      />
+                    </div>
+                  </Card>
+
+                  {/* Personal best under averages: the figure it reports is
+                      read off the stretch list to its right, and the two
+                      belong in one line of sight. */}
+                  <Card title={t("focus.log.best")}>
+                    {figures === null || figures.best === null ? (
+                      <p className="text-sm text-foreground-muted">
+                        {t("focus.log.bestNone")}
+                      </p>
+                    ) : (
+                      <dl className="text-sm">
+                        <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
+                          <dt className="text-foreground-muted">
+                            {t("focus.log.bestStretch")}
+                          </dt>
+                          <dd className="text-right text-foreground">
+                            <span className="font-display font-semibold tabular-nums">
+                              {duration(figures.best.ms, language)}
+                            </span>
+                            <span className="text-foreground-faint">
+                              {" "}
+                              · {stampDate(figures.best.start, language)}
+                            </span>
+                          </dd>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3 pt-3">
+                          <dt className="text-foreground-muted">
+                            {t("focus.log.bestDay")}
+                          </dt>
+                          <dd className="text-right text-foreground">
+                            {figures.topDay === null ? (
+                              <span className="text-foreground-faint">—</span>
+                            ) : (
+                              <>
+                                <span className="font-display font-semibold tabular-nums">
+                                  {/* The day's useful time against the full
+                                      24 hours, then a dot before the span. */}
+                                  {Math.round(
+                                    (figures.topDay.useful /
+                                      (24 * 60 * 60 * 1000)) *
+                                      100
+                                  )}
+                                  %{" · "}
+                                  {duration(figures.topDay.useful, language)}
+                                </span>
+                                <span className="text-foreground-faint">
+                                  {" "}
+                                  · {stampDate(figures.topDay.day, language)}
+                                </span>
+                              </>
+                            )}
+                          </dd>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-4 pt-3">
+                          <dt className="text-foreground-muted">
+                            {t("focus.log.bestDayTasks")}
+                          </dt>
+                          <dd className="text-right text-foreground">
+                            <span className="font-display font-semibold tabular-nums">
+                              {t("stats.tasks.count", {
+                                n: tasks?.bestDayCount ?? 0,
+                              })}
+                            </span>
+                            {tasks?.bestDay !== null &&
+                              tasks?.bestDay !== undefined && (
+                                <span className="text-foreground-faint">
+                                  {" "}
+                                  · {stampDate(tasks.bestDay, language)}
+                                </span>
+                              )}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
+                  </Card>
+                  </div>
+
+                  <div className="flex flex-col gap-5 xl:col-span-7">
+                  <Card
                     title={t("focus.log.stretches")}
                     hint={dayUseful > 0 ? duration(dayUseful, language) : undefined}
                     // The day's own pages: a chevron either side for stepping
@@ -1185,109 +1634,7 @@ export function FocusStats({
                     </p>
                   </Card>
 
-                  {/* A stack at narrow widths, and no box at all from `xl` up:
-                      `display: contents` dissolves this wrapper so the three
-                      cards become cells of the grid above and can be spread
-                      across both of its columns. The order phone-width readers
-                      get is untouched — the wrapper still sequences them as it
-                      always did — and a cell of its own is what lets `Personal
-                      best` leave its neighbours and stand under the stretch
-                      list, which is the one card it is read against. */}
-                  <div className="flex flex-col gap-5 xl:contents">
                     <Card
-                      className="xl:col-span-5"
-                      title={t("focus.log.averages")}
-                      hint={
-                        averages === null
-                          ? undefined
-                          : t("focus.log.days", { n: averages.days })
-                      }
-                      action={
-                        <Segmented
-                          value={period}
-                          options={PERIODS.map((option) => ({
-                            key: option.key,
-                            label: t(option.labelKey),
-                          }))}
-                          onChange={setPeriod}
-                          label={t("focus.log.period")}
-                        />
-                      }
-                    >
-                      <div className="grid grid-cols-2 gap-3">
-                        <Metric
-                          label={t("focus.log.perDay")}
-                          value={duration(averages?.perDay ?? 0, language)}
-                        />
-                        <Metric
-                          label={t("focus.log.share")}
-                          value={`${Math.round((averages?.share ?? 0) * 100)}%`}
-                        />
-                        <Metric
-                          label={t("focus.log.switches")}
-                          value={(averages?.switches ?? 0).toFixed(1)}
-                        />
-                        <Metric
-                          label={t("focus.log.perStretch")}
-                          value={duration(averages?.stretch ?? 0, language)}
-                        />
-                      </div>
-                    </Card>
-
-                    {/* Asked for its own column rather than left to fall in
-                        behind the averages: the figure it reports is read off
-                        the stretch list above it, and the two belong in one
-                        line of sight. */}
-                    <Card
-                      className="xl:col-span-7 xl:col-start-6"
-                      title={t("focus.log.best")}
-                    >
-                      {figures === null || figures.best === null ? (
-                        <p className="text-sm text-foreground-muted">
-                          {t("focus.log.bestNone")}
-                        </p>
-                      ) : (
-                        <dl className="text-sm">
-                          <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
-                            <dt className="text-foreground-muted">
-                              {t("focus.log.bestStretch")}
-                            </dt>
-                            <dd className="text-right text-foreground">
-                              <span className="font-display font-semibold tabular-nums">
-                                {duration(figures.best.ms, language)}
-                              </span>
-                              <span className="text-foreground-faint">
-                                {" "}
-                                · {stampDate(figures.best.start, language)}
-                              </span>
-                            </dd>
-                          </div>
-                          <div className="flex items-baseline justify-between gap-4 pt-3">
-                            <dt className="text-foreground-muted">
-                              {t("focus.log.bestDay")}
-                            </dt>
-                            <dd className="text-right text-foreground">
-                              {figures.topDay === null ? (
-                                <span className="text-foreground-faint">—</span>
-                              ) : (
-                                <>
-                                  <span className="font-display font-semibold tabular-nums">
-                                    {duration(figures.topDay.useful, language)}
-                                  </span>
-                                  <span className="text-foreground-faint">
-                                    {" "}
-                                    · {stampDate(figures.topDay.day, language)}
-                                  </span>
-                                </>
-                              )}
-                            </dd>
-                          </div>
-                        </dl>
-                      )}
-                    </Card>
-
-                    <Card
-                      className="xl:col-span-5"
                       title={t("focus.log.when")}
                       hint={t("focus.log.allHistory")}
                     >
@@ -1295,6 +1642,7 @@ export function FocusStats({
                         {peak === null
                           ? t("focus.log.when.none")
                           : t("focus.log.when.peak", {
+                              days: peakDayNames,
                               from: hourName(peak, language),
                               to: hourName(peak + 1, language),
                               value: duration(hours[peak], language),
@@ -1308,19 +1656,28 @@ export function FocusStats({
                         />
                       </div>
                     </Card>
-                  </div>
 
+                  {/* The right column's last card; keeping the span explicit
+                      is cheaper than re-deriving the layout whenever a card
+                      moves. */}
                   <Card
-                    className="xl:col-span-7"
                     title={t("focus.log.trend")}
                     hint={t(
-                      chart === "week" ? "focus.log.weeks" : "focus.log.months"
+                      chart === "day"
+                        ? "focus.log.days14"
+                        : chart === "week"
+                          ? "focus.log.weeks"
+                          : "focus.log.months"
                     )}
                     action={
                       <Segmented
                         value={chart}
                         options={[
-                          { key: "week" as const, label: t("focus.log.chart.week") },
+                          { key: "day" as const, label: t("focus.log.chart.day") },
+                          {
+                            key: "week" as const,
+                            label: t("focus.log.chart.week"),
+                          },
                           {
                             key: "month" as const,
                             label: t("focus.log.chart.month"),
@@ -1332,65 +1689,105 @@ export function FocusStats({
                     }
                   >
                     <p className="text-sm leading-snug text-foreground-muted">
-                      {t(
-                        chart === "week"
-                          ? "focus.log.thisWeek"
-                          : "focus.log.thisMonth"
-                      )}
+                      {rangeLabel}
                       {": "}
                       <span className="font-medium tabular-nums text-foreground">
                         {duration(chartValue, language)}
+                      </span>
+                      <span className="text-foreground-faint">
+                        {" · "}
+                        <span className="font-medium tabular-nums text-foreground">
+                          {t("stats.tasks.doneCount", { n: chartDoneValue })}
+                        </span>
                       </span>
                     </p>
                     <p className="mt-1 text-sm leading-snug text-foreground-muted">
                       {trendCaption}
                     </p>
-                    <div className="mt-5">
-                      <Line
-                        values={chartBars.map((bar) => bar.useful)}
-                        titles={chartBars.map(
-                          (bar, index) =>
-                            // The days the bar stands for, not just where it
-                            // starts — and the one still running reads through
-                            // today, since its tail has not happened yet.
-                            `${dateRange(
-                              bar.from,
-                              index === chartBars.length - 1 && figures !== null
-                                ? shiftDays(figures.today, 1)
-                                : bar.to,
-                              language
-                            )} · ${duration(bar.useful, language)}`
-                        )}
-                        labels={chartBars.map((bar) =>
-                          chart === "week"
-                            ? weekName(bar.from, language)
-                            : shortMonth(bar.from, language)
-                        )}
-                        marked={chartBars.length - 1}
-                      />
+                    <p className="mt-1 text-sm leading-snug text-foreground-muted">
+                      {taskTrendCaption}
+                    </p>
+                    {/* Two lines on the same bars — focus time over tasks
+                        done, week by week or month by month. They never share
+                        an axis (hours and counts do not), so each keeps its
+                        own chart and its own label; the shared picker and the
+                        shared spans are what make the pair readable as one. */}
+                    <div className="mt-5 flex flex-col gap-5">
+                      <div>
+                        <p className="mb-2 text-xs font-medium tracking-wide text-foreground-muted">
+                          {t("stats.compare.focus")}
+                        </p>
+                        <Line
+                          values={chartBars.map((bar) => bar.useful)}
+                          titles={chartBars.map(
+                            (bar, index) =>
+                              // The days the bar stands for, not just where it
+                              // starts — and the one still running reads through
+                              // today, since its tail has not happened yet.
+                              `${dateRange(
+                                bar.from,
+                                index === chartBars.length - 1 && figures !== null
+                                  ? shiftDays(figures.today, 1)
+                                  : bar.to,
+                                language
+                              )} · ${duration(bar.useful, language)}`
+                          )}
+                          labels={chartBars.map((bar) =>
+                            chart === "day"
+                              ? dayTick(bar.from)
+                              : chart === "week"
+                                ? weekName(bar.from, language)
+                                : shortMonth(bar.from, language)
+                          )}
+                          marked={chartBars.length - 1}
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-2 text-xs font-medium tracking-wide text-foreground-muted">
+                          {t("stats.compare.done")}
+                        </p>
+                        <Line
+                          values={chartDone}
+                          titles={chartBars.map(
+                            (bar, index) =>
+                              `${dateRange(
+                                bar.from,
+                                index === chartBars.length - 1 && figures !== null
+                                  ? shiftDays(figures.today, 1)
+                                  : bar.to,
+                                language
+                              )} · ${t("stats.tasks.count", { n: chartDone[index] })}`
+                          )}
+                          labels={chartBars.map((bar) =>
+                            chart === "day"
+                              ? dayTick(bar.from)
+                              : chart === "week"
+                                ? weekName(bar.from, language)
+                                : shortMonth(bar.from, language)
+                          )}
+                          marked={chartBars.length - 1}
+                        />
+                      </div>
                     </div>
                   </Card>
 
+                  </div>
+
                   <Card
                     className="xl:col-span-12"
-                    title={t("focus.log.milestones")}
+                    title={t("focus.ms.focusTitle")}
                     hint={t("focus.ms.of", {
                       have: boardEarned,
                       target: boardItems.length,
                     })}
                   >
-                    {/* One flat run of cards with no headings between them: a
-                        ladder is the same card as a lone milestone, walked with
-                        the arrows instead of standing still. Same width, same
-                        shape, so the board reads as one set.
-
-                        As many cards to a row as the width allows, rather than a
-                        fixed count: every card then fills its column instead of
-                        sitting in the middle of a wide one with air around it,
-                        and the last row is simply the one that ran out of cards
-                        to fill it. Two to a row on a phone. */}
+                    {/* As many cards to a row as the width allows, rather than
+                        a fixed count: every card then fills its column instead
+                        of sitting in the middle of a wide one with air around
+                        it, and the last row is simply the one that ran out of
+                        cards to fill it. Two to a row on a phone. */}
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(170px,1fr))]">
-                      {board.map((group) =>
+                      {focusBoard.map((group) =>
                         group.ladder ? (
                           <MilestoneLadder key={group.group} group={group} />
                         ) : (

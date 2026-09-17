@@ -8,6 +8,7 @@ import {
   ListChecks,
   MoreHorizontal,
   Pencil,
+  Repeat,
   Star,
   Trash2,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tag } from "@/components/ui/tag";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { addDays, dueLabel, dueTone, relativeCreated, todayISO } from "@/lib/date";
+import { recurLabel } from "@/lib/recur";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -138,6 +140,15 @@ export function TodoItem({
           aria-hidden="true"
         />
         {list.name}
+      </span>
+    );
+  }
+
+  if (todo.recur) {
+    metaGroups.push(
+      <span key="recur" className="inline-flex items-center gap-1">
+        <Repeat className="h-3 w-3" aria-hidden="true" />
+        {recurLabel(todo.recur, language)}
       </span>
     );
   }
