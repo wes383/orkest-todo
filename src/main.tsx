@@ -25,6 +25,9 @@ import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/noto-sans-sc";
 
 import App from "./App";
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { FocusWidget } from "@/components/focus/focus-widget";
 import { NativeWindowTheme } from "@/components/native-window-theme";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider, applyDocumentLanguage, detectLanguage } from "@/lib/i18n";
@@ -43,8 +46,14 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
       <I18nProvider>
-        <NativeWindowTheme />
-        <App />
+        {isTauri() && getCurrentWindow().label === "focus-widget" ? (
+          <FocusWidget />
+        ) : (
+          <>
+            <NativeWindowTheme />
+            <App />
+          </>
+        )}
       </I18nProvider>
     </ThemeProvider>
   </React.StrictMode>

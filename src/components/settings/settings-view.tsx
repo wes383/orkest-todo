@@ -108,6 +108,13 @@ export interface SettingsViewProps {
   /** The settings page's own trigger — App clears both stores behind it, so
       the button stays a declaration and the wiping stays where the data is. */
   onDeleteAllData: () => void;
+  focusWidget: {
+    enabled: boolean;
+    pending: boolean;
+    error: boolean;
+    available: boolean;
+    setVisible: (enabled: boolean) => Promise<void>;
+  };
 }
 
 export function SettingsView({
@@ -118,6 +125,7 @@ export function SettingsView({
   setViewVisible,
   setSpanLimits,
   onDeleteAllData,
+  focusWidget,
 }: SettingsViewProps) {
   const { t, language, setLanguage } = useI18n();
   const { theme, setTheme, highContrast, toggleHighContrast } = useAppTheme();
@@ -237,6 +245,19 @@ export function SettingsView({
               {t("settings.sectionFocus")}
             </SubsectionLabel>
             <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+              <Row
+                label={t("settings.focusWidget")}
+                hint={t(focusWidget.error ? "widget.error" : focusWidget.available ? "settings.focusWidgetHint" : "settings.focusWidgetDesktopOnly")}
+                htmlFor="settings-focus-widget"
+              >
+                <Switch
+                  id="settings-focus-widget"
+                  checked={focusWidget.enabled}
+                  disabled={!focusWidget.available || focusWidget.pending}
+                  onCheckedChange={(enabled) => { void focusWidget.setVisible(enabled); }}
+                  aria-label={t("settings.focusWidget")}
+                />
+              </Row>
               <Row
                 label={t("settings.minSpan")}
                 hint={t("settings.minSpanHint")}

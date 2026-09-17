@@ -57,6 +57,7 @@ import {
 } from "@/lib/selectors";
 import { useTodoStore, type TodoDraft } from "@/lib/store";
 import { useFocusStore } from "@/lib/focus-store";
+import { useFocusWidgetBridge, useFocusWidgetVisibility } from "@/lib/focus-widget";
 import { useAchievementToasts } from "@/lib/achievement-toasts";
 import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
@@ -343,6 +344,13 @@ export default function App() {
   );
 
   useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
+  const focusWidget = useFocusWidgetVisibility();
+  useFocusWidgetBridge(
+    focus,
+    language,
+    lists.find((list) => list.id === focus.running?.listId)?.name ?? null,
+    filters.listId
+  );
 
   const handleQuickAdd = useCallback(
     (draft: QuickInput) => {
@@ -626,6 +634,7 @@ export default function App() {
             settings={settings}
             setViewVisible={setViewVisible}
             setSpanLimits={setSpanLimits}
+            focusWidget={focusWidget}
             onDeleteAllData={() => {
               store.clearAll();
               focus.clearAll();
