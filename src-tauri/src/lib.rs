@@ -77,28 +77,163 @@ fn widget_axis(
   position
 }
 
-fn layout_focus_widget(window: &tauri::WebviewWindow, expanded: bool, snap: bool) -> Result<(), String> {
+/// Serialized result of a widget layout pass, so the widget webview can
+/// mirror the docked state without guessing from window geometry.
+#[derive(Debug, Clone, serde::Serialize)]
+struct WidgetLayoutState {
+  docked: bool,
+  edge: Option<&'static str>,
+}
+
+impl WidgetLayoutState {
+  const fn floating() -> Self {
+    Self { docked: false, edge: None }
+  }
+}
+
+/// A widget is "docked" when its window is one of the small edge tabs.
+/// Pill is 248 logical wide, expanded pill too, tabs are 48 or 96 wide.
+fn widget_is_docked(width: i64, scale: f64) -> bool {
+  (width as f64 / scale) < 160.0
+}
+
+/// Picks the nearest work-area edge within `threshold`, or `None` when the
+/// window floats far from every edge. Ties resolve left, right, top, bottom.
+fn dock_edge(left: i64, right: i64, top: i64, bottom: i64, threshold: i64) -> Option<&'static str> {
+  let candidates = [("left", left), ("right", right), ("top", top), ("bottom", bottom)];
+  let mut best: Option<(&'static str, i64)> = None;
+  for (edge, gap) in candidates {
+    if gap < 0 || gap > threshold {
+      continue;
+    }
+    match best {
+      Some((_, current)) if current <= gap => {}
+      _ => best = Some((edge, gap)),
+    }
+  }
+  best.map(|(edge, _)| edge)
+}
+
+/// Gap between each work-area edge (left, right, top, bottom) and a rect,
+/// clamped at zero: a rect overlapping the edge counts as touching it, so a
+/// widget dragged halfway past the edge still docks.
+fn dock_gaps(
+  position: (i64, i64),
+  size: (i64, i64),
+  area: (i64, i64, i64, i64),
+) -> (i64, i64, i64, i64) {
+  let (area_x, area_y, area_w, area_h) = area;
+  (
+    (position.0 - area_x).max(0),
+    (area_x + area_w - position.0 - size.0).max(0),
+    (position.1 - area_y).max(0),
+    (area_y + area_h - position.1 - size.1).max(0),
+  )
+}
+
+/// Position for the small edge tab: flush against the chosen edge, centered
+/// on `anchor` (the pointer or window center) along that edge, clamped inside
+/// the work area.
+fn docked_tab(
+  edge: &str,
+  anchor: (i64, i64),
+  area: (i64, i64, i64, i64),
+  tab: (i64, i64),
+) -> (i64, i64) {
+  let (area_x, area_y, area_w, area_h) = area;
+  let clamp_x = |x: i64| x.clamp(area_x, (area_x + area_w - tab.0).max(area_x));
+  let clamp_y = |y: i64| y.clamp(area_y, (area_y + area_h - tab.1).max(area_y));
+  match edge {
+    "left" => (area_x, clamp_y(anchor.1 - tab.1 / 2)),
+    "right" => (area_x + area_w - tab.0, clamp_y(anchor.1 - tab.1 / 2)),
+    "top" => (clamp_x(anchor.0 - tab.0 / 2), area_y),
+    _ => (clamp_x(anchor.0 - tab.0 / 2), area_y + area_h - tab.1),
+  }
+}
+
+fn layout_focus_widget(
+  window: &tauri::WebviewWindow,
+  expanded: bool,
+  snap: bool,
+  dock: bool,
+  cursor: Option<(i32, i32)>,
+) -> Result<WidgetLayoutState, String> {
   let monitor = window.current_monitor().map_err(|e| e.to_string())?
     .or(window.primary_monitor().map_err(|e| e.to_string())?)
     .ok_or("No monitor available for focus widget")?;
   let area = monitor.work_area();
   let scale = monitor.scale_factor();
-  let size = tauri::LogicalSize::new(248.0, if expanded { 224.0 } else { 76.0 })
-    .to_physical::<u32>(scale);
   let position = window.outer_position().map_err(|e| e.to_string())?;
   let old_size = window.outer_size().map_err(|e| e.to_string())?;
+  let area_x = area.position.x as i64;
+  let area_y = area.position.y as i64;
+  let area_w = area.size.width as i64;
+  let area_h = area.size.height as i64;
   let threshold = (24.0 * scale).round() as i64;
+  if dock {
+    let dock_threshold = (64.0 * scale).round() as i64;
+    // Prefer the pointer position: the dragged window cannot reach the edge
+    // by its own rect (the grab offset keeps it away) and may overlap it, so
+    // the cursor is what reliably tells "the user pushed it into the edge".
+    let (gaps, anchor) = match cursor {
+      Some((cx, cy)) => (
+        dock_gaps((cx as i64, cy as i64), (0, 0), (area_x, area_y, area_w, area_h)),
+        (cx as i64, cy as i64),
+      ),
+      None => (
+        dock_gaps(
+          (position.x as i64, position.y as i64),
+          (old_size.width as i64, old_size.height as i64),
+          (area_x, area_y, area_w, area_h),
+        ),
+        (
+          position.x as i64 + old_size.width as i64 / 2,
+          position.y as i64 + old_size.height as i64 / 2,
+        ),
+      ),
+    };
+    let edge = dock_edge(gaps.0, gaps.1, gaps.2, gaps.3, dock_threshold);
+    if let Some(edge) = edge {
+      // Tab height matches the collapsed pill (76) so hover expansion does
+      // not change the tab's visible height.
+      let (tab_w, tab_h) = if edge == "left" || edge == "right" { (36.0, 76.0) } else { (76.0, 36.0) };
+      let size = tauri::LogicalSize::new(tab_w, tab_h).to_physical::<u32>(scale);
+      let (x, y) = docked_tab(
+        edge,
+        anchor,
+        (area_x, area_y, area_w, area_h),
+        (size.width as i64, size.height as i64),
+      );
+      window.set_size(size).map_err(|e| e.to_string())?;
+      window.set_position(tauri::PhysicalPosition::new(x as i32, y as i32))
+        .map_err(|e| e.to_string())?;
+      return Ok(WidgetLayoutState { docked: true, edge: Some(edge) });
+    }
+  }
+  let size = tauri::LogicalSize::new(216.0, if expanded { 246.0 } else { 76.0 })
+    .to_physical::<u32>(scale);
+  // Expanding out of a docked tab keeps the center fixed so hover
+  // expand/collapse cycles do not drift the pill along the edge.
+  let (x, y) = if !dock && widget_is_docked(old_size.width as i64, scale) {
+    (
+      position.x as i64 + (old_size.width as i64 - size.width as i64) / 2,
+      position.y as i64 + (old_size.height as i64 - size.height as i64) / 2,
+    )
+  } else {
+    (position.x as i64, position.y as i64)
+  };
   let x = widget_axis(
-    position.x as i64, old_size.width as i64, size.width as i64,
-    area.position.x as i64, area.size.width as i64, threshold, snap,
+    x, size.width as i64, size.width as i64,
+    area_x, area_w, threshold, snap,
   );
   let y = widget_axis(
-    position.y as i64, old_size.height as i64, size.height as i64,
-    area.position.y as i64, area.size.height as i64, threshold, snap,
+    y, size.height as i64, size.height as i64,
+    area_y, area_h, threshold, snap,
   );
   window.set_size(size).map_err(|e| e.to_string())?;
   window.set_position(tauri::PhysicalPosition::new(x as i32, y as i32))
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+  Ok(WidgetLayoutState::floating())
 }
 
 fn ensure_focus_widget(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
@@ -114,7 +249,7 @@ fn ensure_focus_widget(app: &AppHandle) -> Result<tauri::WebviewWindow, String> 
     .always_on_top(true)
     .skip_taskbar(true)
     .resizable(false)
-    .inner_size(248.0, 76.0)
+    .inner_size(216.0, 76.0)
     .visible(false)
     .focused(false);
   #[cfg(not(target_os = "macos"))]
@@ -128,7 +263,7 @@ fn ensure_focus_widget(app: &AppHandle) -> Result<tauri::WebviewWindow, String> 
       .ok_or("No monitor available for focus widget")?;
     let area = monitor.work_area();
     let scale = monitor.scale_factor();
-    let size = tauri::LogicalSize::new(248.0, 76.0).to_physical::<u32>(scale);
+    let size = tauri::LogicalSize::new(216.0, 76.0).to_physical::<u32>(scale);
     let margin = (12.0 * scale).round() as i64;
     let x = (area.position.x as i64 + area.size.width as i64 - size.width as i64 - margin)
       .max(area.position.x as i64);
@@ -168,9 +303,11 @@ fn change_focus_widget_enabled(app: &AppHandle, enabled: bool) -> Result<(), Str
   };
   if let Some(window) = &window {
     if enabled {
-      let expanded = window.inner_size().map_err(|e| e.to_string())?
-        .to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?).height > 150.0;
-      layout_focus_widget(window, expanded, false)?;
+      let scale = window.scale_factor().map_err(|e| e.to_string())?;
+      let inner = window.inner_size().map_err(|e| e.to_string())?;
+      let expanded = inner.height as f64 / scale > 150.0;
+      let docked = widget_is_docked(inner.width as i64, scale);
+      layout_focus_widget(window, expanded, false, docked, None)?;
       window.show().map_err(|e| e.to_string())?;
     } else {
       window.hide().map_err(|e| e.to_string())?;
@@ -228,14 +365,21 @@ async fn set_focus_widget_enabled(window: tauri::WebviewWindow, enabled: bool) -
 }
 
 #[tauri::command]
-async fn focus_widget_layout(window: tauri::WebviewWindow, expanded: bool, snap: bool) -> Result<(), String> {
+async fn focus_widget_layout(
+  window: tauri::WebviewWindow,
+  expanded: bool,
+  snap: bool,
+  dock: Option<bool>,
+  cursor_x: Option<i32>,
+  cursor_y: Option<i32>,
+) -> Result<WidgetLayoutState, String> {
   if window.label() != FOCUS_WIDGET {
     return Err("Only the focus widget may change its layout".into());
   }
   tauri::async_runtime::spawn_blocking(move || {
     let state = window.state::<FocusWidget>();
     let _operation = state.operation.lock().unwrap_or_else(|e| e.into_inner());
-    layout_focus_widget(&window, expanded, snap)
+    layout_focus_widget(&window, expanded, snap, dock.unwrap_or(false), cursor_x.zip(cursor_y))
   }).await.map_err(|e| e.to_string())?
 }
 
@@ -918,6 +1062,57 @@ mod tests {
   }
 
   #[test]
+  fn dock_gaps_clamp_overlap_and_measure_pointer_distances() {
+    let area = (0, 0, 1000, 1000);
+    // Pill dragged 124px past the left edge: rect overlap still counts as
+    // touching the edge instead of being skipped.
+    assert_eq!(dock_gaps((-124, 500), (248, 76), area), (0, 876, 500, 424));
+    // Pointer gaps are just distances to each edge (size 0 rect).
+    assert_eq!(dock_gaps((2, 500), (0, 0), area), (2, 998, 500, 500));
+    assert_eq!(dock_gaps((998, 500), (0, 0), area), (998, 2, 500, 500));
+    // Pointer or rect outside the work area clamps to zero.
+    assert_eq!(dock_gaps((-50, -50), (0, 0), area), (0, 1050, 0, 1050));
+  }
+
+  #[test]
+  fn dock_edge_picks_nearest_edge_within_threshold_only() {
+    assert_eq!(dock_edge(0, 752, 400, 324, 48), Some("left"));
+    assert_eq!(dock_edge(8, 744, 400, 324, 48), Some("left"));
+    assert_eq!(dock_edge(48, 704, 400, 324, 48), Some("left"));
+    assert_eq!(dock_edge(49, 703, 400, 324, 48), None);
+    assert_eq!(dock_edge(752, 0, 400, 324, 48), Some("right"));
+    assert_eq!(dock_edge(400, 324, 0, 752, 48), Some("top"));
+    assert_eq!(dock_edge(400, 324, 752, 0, 48), Some("bottom"));
+    assert_eq!(dock_edge(400, 400, 400, 400, 48), None);
+    assert_eq!(dock_edge(12, 400, 12, 400, 48), Some("left"));
+    assert_eq!(dock_edge(400, 12, 12, 400, 48), Some("right"));
+  }
+
+  #[test]
+  fn docked_tab_flush_to_edge_and_centered_on_anchor() {
+    // Anchor is the pointer (or window center): pill 248x76 at (100, 500)
+    // has its center at (224, 538); 48x96 / 96x48 tab, 1000x1000 work area.
+    let area = (0, 0, 1000, 1000);
+    assert_eq!(docked_tab("left", (224, 538), area, (48, 96)), (0, 490));
+    assert_eq!(docked_tab("right", (224, 538), area, (48, 96)), (952, 490));
+    assert_eq!(docked_tab("top", (224, 538), area, (96, 48)), (176, 0));
+    assert_eq!(docked_tab("bottom", (224, 538), area, (96, 48)), (176, 952));
+    // Anchoring clamps inside the work area at corners.
+    assert_eq!(docked_tab("left", (124, 48), area, (48, 96)), (0, 0));
+    assert_eq!(docked_tab("left", (124, 1028), area, (48, 96)), (0, 904));
+    assert_eq!(docked_tab("top", (86, 38), area, (96, 48)), (38, 0));
+  }
+
+  #[test]
+  fn widget_is_docked_matches_tab_sizes_only() {
+    assert!(widget_is_docked(48, 1.0));
+    assert!(widget_is_docked(96, 1.0));
+    assert!(!widget_is_docked(248, 1.0));
+    assert!(widget_is_docked(60, 1.25));
+    assert!(!widget_is_docked(310, 1.25));
+  }
+
+  #[test]
   fn widget_preference_defaults_safely_and_replaces_existing_file() {
     let directory = std::env::temp_dir().join(format!(
       "orkest-focus-widget-test-{}-{}",
@@ -958,7 +1153,8 @@ mod tests {
       "core:default", "core:window:allow-set-theme", "opener:default",
     ]));
     assert_eq!(value["capabilities"][1]["permissions"], serde_json::json!([
-      "core:default", "core:window:allow-set-position", "core:window:allow-set-theme",
+      "core:default", "core:window:allow-set-position",
+      "core:window:allow-cursor-position", "core:window:allow-set-theme",
     ]));
   }
 

@@ -345,12 +345,7 @@ export default function App() {
 
   useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
   const focusWidget = useFocusWidgetVisibility();
-  useFocusWidgetBridge(
-    focus,
-    language,
-    lists.find((list) => list.id === focus.running?.listId)?.name ?? null,
-    filters.listId
-  );
+  useFocusWidgetBridge(focus, language, lists, filters.listId);
 
   const handleQuickAdd = useCallback(
     (draft: QuickInput) => {

@@ -3,14 +3,21 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, EyeOff, ExternalLink, Loader2, Play, Square } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, EyeOff, ExternalLink, Folder, Loader2, Play, Square } from "lucide-react";
 import { useFocusWidgetClient } from "@/lib/focus-widget";
 import { detectLanguage } from "@/lib/i18n";
 import { translate, type MessageKey, type MessageVars } from "@/lib/messages";
 import { cn } from "@/lib/utils";
 
 type Point = { x: number; y: number };
-type Layout = { expanded: boolean; snap: boolean };
+type Layout = {
+  expanded: boolean;
+  snap: boolean;
+  dock: boolean;
+  cursorX: number | null;
+  cursorY: number | null;
+};
+type LayoutResult = { docked: boolean; edge: string | null };
 type Gesture = {
   id: number;
   target: HTMLElement;
@@ -29,9 +36,18 @@ function useWidgetSurface() {
   const [expanded, setExpanded] = useState(false);
   const [changing, setChanging] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [docked, setDocked] = useState(false);
+  const [edge, setEdge] = useState<string | null>(null);
+  const [hovering, setHovering] = useState(false);
   const [failed, setFailed] = useState(false);
   const alive = useRef(false);
   const expandedRef = useRef(false);
+  const dockedRef = useRef(false);
+  const hoverRef = useRef(false);
+  // Set whenever the widget docks: hover-expand stays disarmed until the
+  // cursor has left the tab's hot zone once, so docking under the resting
+  // cursor does not instantly pop it back open.
+  const requireExitRef = useRef(false);
   const desired = useRef<Layout | null>(null);
   const working = useRef(false);
   const gesture = useRef<Gesture | null>(null);
@@ -71,16 +87,44 @@ function useWidgetSurface() {
           if (!g.ended) break;
           gesture.current = null;
           if (g.moved) {
-            desired.current = { expanded: expandedRef.current, snap: true };
+            // Dragging the widget away detaches it from the dock: no more
+            // hover expand or auto re-dock until it is docked again.
+            hoverRef.current = false;
+            // Dock decisions use the cursor: the dragged window's own rect
+            // cannot reach the edge (grab offset) and may overlap it.
+            let cursor: Point | null = null;
+            if (g.pointerType === "mouse") {
+              try {
+                const final = await (g.finalCursor ?? cursorPosition());
+                if (final) cursor = { x: final.x, y: final.y };
+              } catch {
+                cursor = null;
+              }
+            }
+            desired.current = {
+              expanded: expandedRef.current,
+              snap: true,
+              dock: true,
+              cursorX: cursor?.x ?? null,
+              cursorY: cursor?.y ?? null,
+            };
           }
           setDragging(false);
         }
-        const layout = desired.current;
-        if (!layout) break;
+        const pending = desired.current;
+        if (!pending) break;
         desired.current = null;
-        await invoke("focus_widget_layout", layout);
+        const result = await invoke<LayoutResult>("focus_widget_layout", pending);
         if (alive.current && !desired.current) {
-          setExpanded(layout.expanded);
+          setExpanded(result.docked ? false : pending.expanded);
+          dockedRef.current = result.docked;
+          setDocked(result.docked);
+          setEdge(result.docked ? result.edge : null);
+          if (result.docked) {
+            hoverRef.current = false;
+            requireExitRef.current = true;
+          }
+          setHovering(hoverRef.current && !result.docked);
         }
       }
     } catch {
@@ -96,10 +140,17 @@ function useWidgetSurface() {
     }
   }, []);
 
-  const layout = useCallback((next: boolean, snap = false) => {
+  const layout = useCallback((next: boolean, snap = false, dock = false) => {
     expandedRef.current = next;
     if (!next) setExpanded(false);
-    desired.current = { expanded: next, snap: snap || Boolean(desired.current?.snap) };
+    const pending = desired.current;
+    desired.current = {
+      expanded: next,
+      snap: snap || Boolean(pending?.snap),
+      dock: dock || Boolean(pending?.dock),
+      cursorX: null,
+      cursorY: null,
+    };
     setChanging(true);
     void flush();
   }, [flush]);
@@ -135,7 +186,17 @@ function useWidgetSurface() {
       if (event.target instanceof Node && !surfaceRef.current?.contains(event.target)) collapse();
     };
     if (isTauri()) {
-      layout(false);
+      // Re-dock on mount when the window was restored as an edge tab, so
+      // hide/show toggles keep the docked state instead of forcing a pill.
+      void (async () => {
+        try {
+          const win = getCurrentWindow();
+          const [size, scale] = await Promise.all([win.outerSize(), win.scaleFactor()]);
+          layout(false, false, size.width / scale < 160);
+        } catch {
+          layout(false);
+        }
+      })();
       getCurrentWindow().onFocusChanged(({ payload }) => {
         if (!payload) collapse();
       }).then((fn) => {
@@ -161,6 +222,56 @@ function useWidgetSurface() {
       document.removeEventListener("pointerdown", onOutside);
     };
   }, [finish, layout]);
+
+  // While docked (or hover-expanded out of the dock), watch the cursor:
+  // approaching the tab expands the pill; letting it drift away re-docks.
+  useEffect(() => {
+    if (!isTauri() || (!docked && !hovering)) return;
+    let cancelled = false;
+    let misses = 0;
+    const tick = async () => {
+      if (cancelled || gesture.current || desired.current || working.current) return;
+      try {
+        const win = getCurrentWindow();
+        const [position, size, scale, cursor] = await Promise.all([
+          win.outerPosition(),
+          win.outerSize(),
+          win.scaleFactor(),
+          cursorPosition(),
+        ]);
+        if (cancelled || !cursor || gesture.current || desired.current) return;
+        // Expand only when the cursor is on the tab itself (4px corner
+        // tolerance); while hover-expanded, a small margin around the pill
+        // keeps it open before the leave counter re-docks.
+        const margin = (dockedRef.current ? 4 : 16) * scale;
+        const inside = cursor.x >= position.x - margin
+          && cursor.x <= position.x + size.width + margin
+          && cursor.y >= position.y - margin
+          && cursor.y <= position.y + size.height + margin;
+        if (dockedRef.current) {
+          if (requireExitRef.current) {
+            if (!inside) requireExitRef.current = false;
+          } else if (inside) {
+            hoverRef.current = true;
+            layout(false, false, false);
+          }
+        } else if (hoverRef.current) {
+          misses = inside ? 0 : misses + 1;
+          if (misses >= 2) {
+            hoverRef.current = false;
+            layout(false, true, true);
+          }
+        }
+      } catch {
+        // Transient cursor/window API failures just skip a tick.
+      }
+    };
+    const timer = window.setInterval(tick, 160);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [docked, hovering, layout]);
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary || event.button !== 0 || !isTauri()) return;
@@ -216,6 +327,9 @@ function useWidgetSurface() {
     expanded,
     changing,
     dragging,
+    docked,
+    edge,
+    hovering,
     failed,
     setFailed,
     statusRef,
@@ -247,38 +361,30 @@ function useWidgetSurface() {
 }
 
 export function FocusWidget() {
-  const { snapshot, connected, pending, error, setFocus, clearError } = useFocusWidgetClient();
+  const { snapshot, connected, pending, error, setFocus, setList, clearError } = useFocusWidgetClient();
   const surface = useWidgetSurface();
   const [acting, setActing] = useState(false);
+  const [listMenu, setListMenu] = useState(false);
   const actionLock = useRef(false);
-  const [now, setNow] = useState(Date.now);
   const actionsId = useId();
-  const hintId = useId();
   const language = snapshot?.language ?? detectLanguage();
   const t = (key: MessageKey, vars?: MessageVars) => translate(language, key, vars);
   const useful = snapshot?.state === "useful";
-  const startedAt = snapshot?.startedAt ?? null;
   const busy = pending || acting;
   const unavailable = !connected || !snapshot;
   const failed = Boolean(error) || surface.failed;
 
+  // The submenu lives inside the panel; closing the panel always lands back
+  // on the main action rows.
   useEffect(() => {
-    if (!connected || !useful || startedAt === null) return;
-    const tick = () => setNow(Date.now());
-    tick();
-    const timer = window.setInterval(tick, 1000);
-    window.addEventListener("focus", tick);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", tick);
-    };
-  }, [connected, useful, startedAt]);
+    if (!surface.expanded) setListMenu(false);
+  }, [surface.expanded]);
 
-  const seconds = startedAt !== null && Number.isFinite(startedAt)
-    ? Math.max(0, Math.floor((now - startedAt) / 1000))
-    : 0;
-  const elapsed = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
-    .map((part) => String(part).padStart(2, "0")).join(":");
+  const chooseList = (listId: string | null) => {
+    setListMenu(false);
+    if (listId !== (snapshot?.listId ?? null)) void setList(listId);
+  };
+
   const status = !connected
     ? t("widget.disconnected")
     : !snapshot
@@ -292,7 +398,7 @@ export function FocusWidget() {
         ? t("widget.openMain")
         : useful
           ? snapshot.listName?.trim() || t("focus.unassigned")
-          : t("widget.dragHint");
+          : "";
 
   const run = async (action: () => Promise<unknown>, restoreFocus = false) => {
     if (actionLock.current) return;
@@ -313,7 +419,13 @@ export function FocusWidget() {
   };
 
   return (
-    <main className="focus-widget" lang={language} aria-label={t("focus.title")}>
+    <main
+      className="focus-widget"
+      lang={language}
+      aria-label={t("focus.title")}
+      data-docked={surface.docked}
+      data-edge={surface.edge ?? undefined}
+    >
       <div
         ref={surface.surfaceRef}
         className="focus-widget-surface bg-surface text-foreground border-border"
@@ -332,10 +444,8 @@ export function FocusWidget() {
           className="focus-widget-status"
           aria-expanded={surface.expanded}
           aria-controls={actionsId}
-          aria-label={`${status} · ${t(surface.expanded ? "widget.collapse" : "widget.expand")}`}
-          aria-describedby={hintId}
+          aria-label={`${status} · ${surface.docked ? t("widget.dockHint") : t(surface.expanded ? "widget.collapse" : "widget.expand")}`}
           aria-busy={surface.changing}
-          title={t("widget.dragHint")}
           onClick={() => surface.layout(!surface.expanded)}
         >
           <span
@@ -347,11 +457,6 @@ export function FocusWidget() {
           <span className="focus-widget-copy">
             <span className="focus-widget-heading">
               <span className="focus-widget-label">{status}</span>
-              {useful && !unavailable && startedAt !== null && (
-                <span className="focus-widget-clock" role="timer" aria-live="off" aria-label={t("focus.session.elapsed", { value: elapsed })}>
-                  {elapsed}
-                </span>
-              )}
             </span>
             <span className={cn("focus-widget-detail", failed && "text-red")} title={detail}>
               {detail}
@@ -360,7 +465,67 @@ export function FocusWidget() {
           <ChevronDown aria-hidden="true" className="focus-widget-chevron" />
         </button>
         <div id={actionsId} className="focus-widget-actions" hidden={!surface.expanded} aria-label={t("widget.expand")} role="group">
-          <button
+          {listMenu ? (
+            <div
+              className="focus-widget-submenu"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  // Consume Escape here so it closes the submenu instead of
+                  // collapsing the whole panel.
+                  event.stopPropagation();
+                  setListMenu(false);
+                }
+              }}
+            >
+              <button type="button" className="focus-widget-action" onClick={() => setListMenu(false)}>
+                <ChevronLeft aria-hidden="true" />
+                <span>{t("widget.list")}</span>
+              </button>
+              <div className="focus-widget-submenu-options" role="listbox" aria-label={t("widget.list")}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={(snapshot?.listId ?? null) === null}
+                  className={cn("focus-widget-action", (snapshot?.listId ?? null) === null && "focus-widget-action-primary")}
+                  onClick={() => chooseList(null)}
+                >
+                  <span>{t("focus.unassigned")}</span>
+                </button>
+                {(snapshot?.lists ?? []).map((list) => {
+                  const selected = snapshot?.listId === list.id;
+                  return (
+                    <button
+                      key={list.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      className={cn("focus-widget-action", selected && "focus-widget-action-primary")}
+                      onClick={() => chooseList(list.id)}
+                    >
+                      <span>{list.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="focus-widget-action"
+                aria-haspopup="menu"
+                aria-expanded={listMenu}
+                aria-label={t("widget.list")}
+                aria-disabled={!useful || unavailable}
+                onClick={() => {
+                  if (useful && !unavailable) setListMenu(true);
+                }}
+              >
+                <Folder aria-hidden="true" />
+                <span>{t("widget.list")} · {snapshot?.listName?.trim() || t("focus.unassigned")}</span>
+                <ChevronRight aria-hidden="true" className="focus-widget-submenu-arrow" />
+              </button>
+              <button
             type="button"
             className="focus-widget-action focus-widget-action-primary"
             aria-disabled={unavailable || busy}
@@ -394,10 +559,10 @@ export function FocusWidget() {
             <EyeOff aria-hidden="true" />
             <span>{t("widget.hide")}</span>
           </button>
-          <span className="focus-widget-footer" aria-hidden="true">{t("widget.dragHint")}</span>
+            </>
+          )}
         </div>
       </div>
-      <span id={hintId} className="sr-only">{t("widget.dragHint")}</span>
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {failed ? t("widget.error") : busy ? t("widget.loading") : status}
       </span>

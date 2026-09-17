@@ -4,9 +4,18 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import type { FocusState, FocusStore } from "@/lib/focus-store";
 import type { Language } from "@/lib/messages";
 
+export interface FocusWidgetList {
+  id: string;
+  name: string;
+}
+
 export interface FocusWidgetSnapshot {
   state: FocusState;
   startedAt: number | null;
+  /** The list the running stretch is filed under, `null` when unassigned. */
+  listId: string | null;
+  /** Every list the main window knows, so the widget can offer a picker. */
+  lists: FocusWidgetList[];
   listName: string | null;
   language: Language;
   theme: string;
@@ -25,18 +34,21 @@ const SNAPSHOT = "focus-widget:snapshot";
 export function useFocusWidgetBridge(
   focus: FocusStore,
   language: Language,
-  listName: string | null,
+  lists: FocusWidgetList[],
   defaultListId: string | null
 ) {
-  const latest = useRef({ focus, language, listName, defaultListId });
+  const latest = useRef({ focus, language, lists, defaultListId });
   const publish = useCallback((requestId?: string) => {
     const current = latest.current;
     const root = document.documentElement;
+    const running = current.focus.running;
     return emitTo("focus-widget", SNAPSHOT, {
       snapshot: {
         state: current.focus.state,
-        startedAt: current.focus.running?.start ?? null,
-        listName: current.listName,
+        startedAt: running?.start ?? null,
+        listId: running?.listId ?? null,
+        lists: current.lists,
+        listName: current.lists.find((list) => list.id === running?.listId)?.name ?? null,
         language: current.language,
         theme: root.classList.contains("dark") ? "dark" : "light",
         highContrast: root.classList.contains("high-contrast"),
@@ -46,9 +58,9 @@ export function useFocusWidgetBridge(
   }, []);
 
   useEffect(() => {
-    latest.current = { focus, language, listName, defaultListId };
+    latest.current = { focus, language, lists, defaultListId };
     if (isTauri()) void publish();
-  }, [focus, language, listName, defaultListId, publish]);
+  }, [focus, language, lists, defaultListId, publish]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -59,10 +71,23 @@ export function useFocusWidgetBridge(
       else subscriptions.push(unsubscribe);
     };
     void listen(REQUEST, () => { void publish(); }).then(keep);
-    void listen<{ state: FocusState; requestId: string }>(COMMAND, ({ payload }) => {
-      if (!payload || !["idle", "useful"].includes(payload.state) || typeof payload.requestId !== "string") return;
+    void listen<{ state?: FocusState; listId?: string | null; requestId: string }>(COMMAND, ({ payload }) => {
+      if (!payload || typeof payload.requestId !== "string") return;
       const current = latest.current;
-      current.focus.commit(payload.state, current.defaultListId);
+      if (payload.state !== undefined) {
+        if (!["idle", "useful"].includes(payload.state)) return;
+        current.focus.commit(payload.state, current.defaultListId);
+      }
+      if (payload.listId !== undefined) {
+        // File the running stretch under the chosen list — the same move the
+        // focus screen's switch offers, reached from the widget. Only a
+        // running stretch can be refiled; while idle there is nothing yet.
+        const spans = current.focus.spans;
+        const index = spans.length - 1;
+        if (current.focus.state === "useful" && index >= 0 && spans[index]?.end === null) {
+          current.focus.setList(index, payload.listId);
+        }
+      }
       window.setTimeout(() => { if (!disposed) void publish(payload.requestId); }, 0);
     }).then(keep);
     const observer = new MutationObserver(() => { void publish(); });
@@ -160,7 +185,7 @@ export function useFocusWidgetClient() {
       }
     };
   }, []);
-  const setFocus = useCallback(async (state: FocusState) => {
+  const send = useCallback(async (body: { state?: FocusState; listId?: string | null }) => {
     if (!connected || waiting.current) return;
     setPending(true);
     setError(null);
@@ -175,11 +200,19 @@ export function useFocusWidgetClient() {
       };
       const timer = window.setTimeout(finish, 5000);
       waiting.current = { id, resolve, timer };
-      void emitTo("main", COMMAND, { state, requestId: id }).catch(() => {
+      void emitTo("main", COMMAND, { ...body, requestId: id }).catch(() => {
         window.clearTimeout(timer);
         finish();
       });
     });
   }, [connected]);
-  return { snapshot, connected, pending, error, setFocus, clearError: useCallback(() => setError(null), []) };
+  const setFocus = useCallback(
+    (state: FocusState) => send({ state }),
+    [send]
+  );
+  const setList = useCallback(
+    (listId: string | null) => send({ listId }),
+    [send]
+  );
+  return { snapshot, connected, pending, error, setFocus, setList, clearError: useCallback(() => setError(null), []) };
 }
