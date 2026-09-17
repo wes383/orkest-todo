@@ -72,6 +72,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           ref={ref}
           disabled={disabled}
           maxLength={maxLength}
+          autoComplete="off"
           onChange={handleChange}
           className={cn(
             textareaVariants({

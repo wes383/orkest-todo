@@ -77,6 +77,16 @@ const config: Config = {
           border: "var(--yellow-border)",
         },
 
+        // ── Focus (the switch and its rail) ──
+        // Named with a `focus-` prefix rather than folded into the semantic
+        // palette: a stretch of useful time is not a success state, and the rail
+        // has to be tunable without moving every badge that says `bg-green`.
+        "focus-track": "var(--focus-track)",
+        "focus-idle": "var(--focus-idle)",
+        "focus-useful": "var(--focus-useful)",
+        "focus-glow": "var(--focus-glow)",
+        "focus-unassigned": "var(--focus-unassigned)",
+
         // ── Project palette (19 colors) ──
         palette: {
           red: "var(--color-red)",
@@ -199,6 +209,13 @@ const config: Config = {
           from: { transform: "translateX(-100%)" },
           to: { transform: "translateX(0)" },
         },
+        // The focus log rises from the foot of the window. Named for the sheet
+        // rather than folded into `fade-slide-in`, whose 4px of travel is a
+        // whisper next to a panel that crosses the whole viewport.
+        "sheet-up": {
+          from: { transform: "translateY(100%)" },
+          to: { transform: "translateY(0)" },
+        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -215,6 +232,7 @@ const config: Config = {
         "scale-in": "scale-in var(--duration-base) var(--ease-spring)",
         "slide-in-right": "slide-in-right var(--duration-slow) var(--ease-out)",
         "slide-in-left": "slide-in-left var(--duration-slow) var(--ease-out)",
+        "sheet-up": "sheet-up var(--duration-slower) var(--ease-out)",
         "accordion-down": "accordion-down 0.2s var(--ease-out)",
         "accordion-up": "accordion-up 0.2s var(--ease-out)",
       },

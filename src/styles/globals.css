@@ -62,6 +62,20 @@
     --yellow-soft: #fefce8;
     --yellow-border: #fde68a;
 
+    /* ── Focus (the switch and its rail) ─────────────────────── */
+    /* The one place the app spends colour on something that is not a semantic
+       state: a soft green for the stretches spent usefully, a neutral grey for
+       the rest of the day, and a track light enough to only whisper where the
+       day ends. Kept apart from `--green` — that one means "success" on a badge
+       — so the rail can be tuned without dragging alerts along with it. */
+    --focus-track: rgba(0, 0, 0, 0.04);
+    --focus-idle: #dcdadd;
+    --focus-useful: #5fd383;
+    --focus-glow: rgba(95, 211, 131, 0.3);
+    /* Stretches filed under no list wear this instead of the useful green —
+        deep enough to read as "deliberately none of the palette colours". */
+    --focus-unassigned: #6e6871;
+
     /* ── Project palette (19 colors, warm-shifted & desaturated) ── */
     --color-red: #c8585a;
     --color-orange: #cc7344;
@@ -235,6 +249,14 @@
     --yellow-soft: rgba(234, 179, 8, 0.14);
     --yellow-border: rgba(250, 204, 21, 0.45);
 
+    /* Hand-tuned rather than derived from the light block: the greys shift warm
+       and the green is eased back, so a near-black rail does not glare. */
+    --focus-track: rgba(255, 255, 255, 0.06);
+    --focus-idle: #3b393e;
+    --focus-useful: #4cb872;
+    --focus-glow: rgba(76, 184, 114, 0.26);
+    --focus-unassigned: #8a848d;
+
     /* ── Shadows (deeper in dark mode) ───────────────────────── */
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -273,6 +295,15 @@
     --green: #006400;
     --orange: #cc5500;
 
+    /* The rail is a reading, so it has to survive high contrast too: a solid
+       grey for the hours that went by, the darkest legible green for the useful
+       ones, and no bloom at all — a glow is decoration, and this mode is not. */
+    --focus-track: rgba(0, 0, 0, 0.14);
+    --focus-idle: #b3b3b3;
+    --focus-useful: #006400;
+    --focus-glow: transparent;
+    --focus-unassigned: #59555c;
+
     --shadow-sm: 0 0 0 1px #000000;
     --shadow-pop: 0 0 0 2px #000000, 0 8px 24px rgba(0, 0, 0, 0.3);
     --shadow-dialog: 0 0 0 2px #000000, 0 16px 48px rgba(0, 0, 0, 0.4);
@@ -303,6 +334,12 @@
     --red: #ff6b6b;
     --green: #66d97a;
     --orange: #ff9b3d;
+
+    --focus-track: rgba(255, 255, 255, 0.22);
+    --focus-idle: #6b6b6b;
+    --focus-useful: #66d97a;
+    --focus-glow: transparent;
+    --focus-unassigned: #b3adb6;
 
     --shadow-sm: 0 0 0 1px #ffffff;
     --shadow-pop: 0 0 0 2px #ffffff, 0 8px 24px rgba(0, 0, 0, 0.6);

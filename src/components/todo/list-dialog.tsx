@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Hint, SubsectionLabel } from "@/components/ui/section";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
-import { PALETTE, paletteVar, type PaletteName, type TodoList } from "@/lib/types";
+import { PALETTE, LIST_NAME_MAX, paletteVar, type PaletteName, type TodoList } from "@/lib/types";
 
 export interface ListDialogProps {
   open: boolean;
@@ -66,6 +66,7 @@ export function ListDialog({
               id="list-name"
               value={name}
               autoFocus
+              maxLength={LIST_NAME_MAX}
               placeholder={t("listDialog.namePlaceholder")}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {

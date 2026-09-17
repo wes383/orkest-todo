@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Star,
+  Timer,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { SubsectionLabel } from "@/components/ui/section";
 import { AppearanceMenu } from "@/components/appearance-menu";
 import { LanguageMenu } from "@/components/language-menu";
@@ -73,6 +75,11 @@ export interface SidebarProps {
   listCounts: Record<string, number>;
   activeView: ViewId;
   activeListId: string | null;
+  /** Whether the focus screen has the main area — it is a screen of its own
+      rather than another filter on the todo list, so it is neither a view nor
+      a list. */
+  focusMode: boolean;
+  onSelectFocus: () => void;
   stats: TodoStats;
   onSelectView: (view: ViewId) => void;
   onSelectList: (listId: string | null) => void;
@@ -87,6 +94,8 @@ export function Sidebar({
   listCounts,
   activeView,
   activeListId,
+  focusMode,
+  onSelectFocus,
   stats,
   onSelectView,
   onSelectList,
@@ -108,8 +117,42 @@ export function Sidebar({
               {t("sidebar.sectionViews")}
             </SubsectionLabel>
             <nav className="mt-2 flex flex-col gap-0.5">
+              {/*
+               * 专注 stands above the views rather than among them. The others
+               * are all filters over the same list of tasks; this one is a
+               * screen of its own, and the hairline is what says so — a row
+               * that looked exactly like its neighbours would read as another
+               * way of narrowing the tasks.
+               *
+               * No count on it, either. Every row around it carries a number of
+               * tasks; the focus screen has none to carry, and a `0` there
+               * would be a lie rather than an absence.
+               */}
+              <button
+                type="button"
+                onClick={onSelectFocus}
+                aria-current={focusMode ? "page" : undefined}
+                className={cn(rowLayout, focusMode ? rowActive : rowIdle)}
+              >
+                {/* No green on the icon, even while this screen is up. The
+                    row's own active fill already says which screen is showing,
+                    and every other row in the sidebar lets its icon take the
+                    row's colour — a second colour here would make this one row
+                    speak a different language from the rest. */}
+                <Icon icon={Timer} size="sm" />
+                <span className="flex-1 truncate text-left">
+                  {t("focus.title")}
+                </span>
+              </button>
+
+              <Separator className="mx-3 my-2 w-auto" />
+
               {VIEWS.map((view) => {
-                const active = activeView === view.id && activeListId === null;
+                // Nothing below the hairline is "current" while the focus screen
+                // has the main area: these views all describe a list of tasks
+                // that is not on screen.
+                const active =
+                  !focusMode && activeView === view.id && activeListId === null;
                 const count = counts[view.id];
                 const alarming = view.id === "overdue" && count > 0;
                 return (
@@ -166,7 +209,7 @@ export function Sidebar({
                 onClick={() => onSelectList(null)}
                 className={cn(
                   rowLayout,
-                  activeListId === null ? rowActive : rowIdle
+                  !focusMode && activeListId === null ? rowActive : rowIdle
                 )}
               >
                 <span className="h-2 w-2 shrink-0 rounded-full bg-foreground-faint" />
@@ -176,7 +219,7 @@ export function Sidebar({
               </button>
 
               {lists.map((list) => {
-                const active = activeListId === list.id;
+                const active = !focusMode && activeListId === list.id;
                 const count = listCounts[list.id] ?? 0;
                 return (
                   <div

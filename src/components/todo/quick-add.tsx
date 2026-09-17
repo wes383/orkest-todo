@@ -22,7 +22,7 @@ import {
   type QuickInput,
   type QuickToken,
 } from "@/lib/quick-input";
-import { PRIORITY_META, type PriorityMeta } from "@/lib/types";
+import { PRIORITY_META, TITLE_MAX, type PriorityMeta } from "@/lib/types";
 
 /**
  * Token paint. Two rules make these safe to drop into running text:
@@ -199,6 +199,11 @@ export function QuickAdd({
             value={value}
             placeholder={t("quickAdd.placeholder")}
             aria-label={t("quickAdd.aria")}
+            // The whole line is a title, so it stops where a title stops. The
+            // field itself is transparent and the mirror above paints the
+            // words, but the mirror is driven by the same `value` — so the
+            // ceiling shows up there the moment it is reached.
+            maxLength={TITLE_MAX}
             className="quick-add-field relative z-10 h-9 w-full rounded-none border-0 bg-transparent px-0 text-transparent caret-foreground focus:border-0"
             onChange={(e) => setValue(e.target.value)}
             onFocus={() => setFocused(true)}

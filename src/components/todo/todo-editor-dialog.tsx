@@ -36,6 +36,7 @@ import type { TodoDraft } from "@/lib/store";
 import {
   PRIORITY_META,
   PRIORITY_ORDER,
+  TITLE_MAX,
   paletteVar,
   type Priority,
   type Subtask,
@@ -210,6 +211,7 @@ export function TodoEditorDialog({
                 id="todo-title"
                 value={form.title}
                 autoFocus
+                maxLength={TITLE_MAX}
                 placeholder={t("editor.titlePlaceholder")}
                 onChange={(e) => patch({ title: e.target.value })}
               />
@@ -298,7 +300,10 @@ export function TodoEditorDialog({
                 aria-label={t("common.dueDate")}
                 placeholder={t("editor.duePlaceholder")}
                 intlLocale={locale}
-                value={form.dueDate ? fromISODate(form.dueDate) : undefined}
+                /* `null`, not `undefined`, when empty: the DatePicker treats an
+                 * `undefined` value prop as "uncontrolled", and the resulting
+                 * mode flip is what once made the first Clear click a no-op. */
+                value={form.dueDate ? fromISODate(form.dueDate) : null}
                 onChange={(v) =>
                   patch({ dueDate: v instanceof Date ? toISODate(v) : "" })
                 }
@@ -374,6 +379,7 @@ export function TodoEditorDialog({
                 <Input
                   id="todo-subtask"
                   value={subtaskInput}
+                  maxLength={TITLE_MAX}
                   placeholder={t("editor.subtaskPlaceholder")}
                   onChange={(e) => setSubtaskInput(e.target.value)}
                   onKeyDown={(e) => {

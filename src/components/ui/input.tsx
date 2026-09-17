@@ -52,6 +52,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         ref={ref}
         disabled={disabled}
         aria-disabled={disabled ? true : undefined}
+        // A desktop app has no use for the browser's saved-addresses dropdown;
+        // every field here is a list name or a task title, and autofill's
+        // suggestions are noise on top of all of them.
+        autoComplete="off"
         className={cn(
           inputVariants({
             variant,

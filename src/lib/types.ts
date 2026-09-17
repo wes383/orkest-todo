@@ -36,6 +36,21 @@ export interface TodoList {
   color: PaletteName;
 }
 
+/**
+ * The longest a title may be typed out to.
+ *
+ * Two fields set a task's title — the quick-add bar and the editor — and they
+ * have to agree, so the number lives here rather than beside either of them.
+ * It is a ceiling on what a person can type, not a rule the store enforces:
+ * data already saved is never truncated, and a title arriving from elsewhere is
+ * shown as it is.
+ */
+export const TITLE_MAX = 50;
+
+/** A list's name is read in a 264px sidebar, where it is truncated anyway, so
+    it needs far less room than a title before it stops being a name. */
+export const LIST_NAME_MAX = 40;
+
 export type PaletteName =
   | "red"
   | "orange"

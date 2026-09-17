@@ -265,10 +265,17 @@ export const DatePicker = React.forwardRef<HTMLInputElement, DatePickerProps>(
 
     const commit = React.useCallback(
       (next: Date | DateRange | undefined) => {
-        if (!isControlled) setInternalValue(next);
+        /*
+         * Always sync the internal copy, not only when uncontrolled. The
+         * controlled detection is `valueProp !== undefined`, so a caller that
+         * passes `undefined` while empty flips this component between modes
+         * across renders; without this sync a stale internal Date would
+         * resurrect in the trigger the moment it flips back.
+         */
+        setInternalValue(next);
         onChange?.(next);
       },
-      [isControlled, onChange]
+      [onChange]
     );
 
     /** Single mode closes on pick — the choice is final the moment it is made. */
@@ -396,7 +403,7 @@ export const DatePicker = React.forwardRef<HTMLInputElement, DatePickerProps>(
                   onClick={handleClear}
                   className="mt-auto text-left text-sm px-3 py-1.5 rounded-md text-foreground-muted hover:bg-hover-bg hover:text-foreground transition-colors duration-base"
                 >
-                  清除
+                  {isZh ? "清除" : "Clear"}
                 </button>
               </div>
             )}

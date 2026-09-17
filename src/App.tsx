@@ -28,6 +28,7 @@ import {
   EmptyIcon,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { FocusView } from "@/components/focus/focus-view";
 import { Sidebar } from "@/components/todo/sidebar";
 import { Toolbar } from "@/components/todo/toolbar";
 import { QuickAdd, type QuickAddHandle } from "@/components/todo/quick-add";
@@ -37,6 +38,7 @@ import {
 } from "@/components/todo/todo-editor-dialog";
 import { ListDialog } from "@/components/todo/list-dialog";
 import { cn } from "@/lib/utils";
+import { useBrowserGuards } from "@/lib/browser-guards";
 import type { QuickInput } from "@/lib/quick-input";
 import {
   DEFAULT_FILTERS,
@@ -51,6 +53,7 @@ import {
   type Filters,
 } from "@/lib/selectors";
 import { useTodoStore, type TodoDraft } from "@/lib/store";
+import { useFocusStore } from "@/lib/focus-store";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
 import { useI18n } from "@/lib/i18n";
@@ -77,6 +80,9 @@ const VIEW_TITLE_KEYS: Record<ViewId, MessageKey> = {
 
 export default function App() {
   const { t, language } = useI18n();
+  // The webview stays a desktop window: no context menu, no browser chords,
+  // no zoom. Runs before anything else below can mount.
+  useBrowserGuards();
   const store = useTodoStore(language);
   const {
     todos,
@@ -95,7 +101,20 @@ export default function App() {
     removeList,
   } = store;
 
+  /*
+   * The focus log, live — held here rather than inside the focus view so that
+   * the session keeps running on the real clock no matter which screen is
+   * showing. Closed away behind the todo list it is still a session: the switch
+   * is a fact about the day, not about which tab happens to be open, and the
+   * store's own timer is what closes a forgotten one at the cap.
+   */
+  const focus = useFocusStore();
+
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  /** Whether the focus screen owns the main area. The sidebar never goes away
+      — it is the way back — so this only decides what fills the space beside
+      it. */
+  const [focusMode, setFocusMode] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Todo | null>(null);
   const [listDialogOpen, setListDialogOpen] = useState(false);
@@ -219,11 +238,18 @@ export default function App() {
     setFilters((f) => ({ ...DEFAULT_FILTERS, view: f.view, listId: f.listId }));
   }, []);
 
+  /*
+   * Picking anything in the sidebar is also the way out of the focus screen:
+   * the two are alternatives for the same space, and asking for a list of tasks
+   * while the switch is up can only mean "show me the tasks".
+   */
   const selectView = useCallback((view: ViewId) => {
+    setFocusMode(false);
     setFilters({ ...DEFAULT_FILTERS, view });
   }, []);
 
   const selectList = useCallback((listId: string | null) => {
+    setFocusMode(false);
     setFilters({ ...DEFAULT_FILTERS, listId });
   }, []);
 
@@ -361,7 +387,19 @@ export default function App() {
   const handleListDelete = useCallback(
     (list: TodoList) => {
       const { movedTo } = removeList(list.id);
-      if (filters.listId === list.id) selectList(null);
+      /*
+       * The tasks move to a fallback list; the hours do not. A task re-homed is
+       * still the same task, but time spent on 工作 did not become time spent on
+       * whatever list happened to be first — so the log keeps those sessions and
+       * only forgets the label, which is what the unassigned bucket is for.
+       */
+      focus.forgetList(list.id);
+      // Written straight into the filters rather than through `selectList`: that
+      // one is also the way out of the focus screen, and deleting the list you
+      // were looking at is no reason to leave it.
+      if (filters.listId === list.id) {
+        setFilters((f) => ({ ...f, listId: null }));
+      }
       const target = lists.find((l) => l.id === movedTo);
       toast(t("toast.listDeleted"), {
         description: target
@@ -369,7 +407,7 @@ export default function App() {
           : t("toast.listDeletedReassigned"),
       });
     },
-    [filters.listId, lists, removeList, selectList, t]
+    [filters.listId, lists, removeList, focus, t]
   );
 
   /* ── Keyboard shortcuts ──────────────────────────────────── */
@@ -444,6 +482,8 @@ export default function App() {
           listCounts={listCounts}
           activeView={filters.view}
           activeListId={filters.listId}
+          focusMode={focusMode}
+          onSelectFocus={() => setFocusMode(true)}
           stats={stats}
           onSelectView={selectView}
           onSelectList={selectList}
@@ -458,6 +498,18 @@ export default function App() {
           onDeleteList={handleListDelete}
         />
 
+        {/*
+         * The main area is one of two screens, never both. The focus screen is
+         * not a layer over the tasks — it replaces them — which is what keeps
+         * the switch the only thing in view while a session is running.
+         */}
+        {focusMode ? (
+          <FocusView
+            store={focus}
+            lists={lists}
+            sidebarListId={filters.listId}
+          />
+        ) : (
         <main className="flex min-w-0 flex-1 flex-col">
           {/*
            * Pinned header — the whole query surface, and nothing else.
@@ -609,7 +661,7 @@ export default function App() {
                       onClick={() => setConfirmClearOpen(true)}
                     >
                       <Icon icon={Trash2} size="sm" />
-                      清理已完成任务
+                      {t("app.clearCompleted")}
                       <span className="font-mono text-xs tabular-nums text-foreground-subtle">
                         {stats.done}
                       </span>
@@ -620,6 +672,7 @@ export default function App() {
             </div>
           </ScrollArea>
         </main>
+        )}
       </div>
 
       {/* Dialogs */}
