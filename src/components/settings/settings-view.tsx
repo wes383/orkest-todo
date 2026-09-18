@@ -138,6 +138,11 @@ export interface SettingsViewProps {
   /** The settings page's own trigger — App clears both stores behind it, so
       the button stays a declaration and the wiping stays where the data is. */
   onDeleteAllData: () => void;
+  /** Whether leaving the app also ends a session that is still running. The
+      other half of the same preference: one row decides how the app arrives,
+      this one how it goes, and both are habits of the app rather than of the
+      work. */
+  setQuitStopsFocus: (value: boolean) => void;
   /** 开机自启 — the OS login item, read and written by the plugin rather than
       stored here; see `autostart.ts` for why it is the one row with no entry in
       `AppSettings`. */
@@ -165,6 +170,7 @@ export function SettingsView({
   setViewVisible,
   setSpanLimits,
   setWidgetOpacity,
+  setQuitStopsFocus,
   onDeleteAllData,
   autostart,
   focusWidget,
@@ -189,6 +195,14 @@ export function SettingsView({
       listId === null ? null : lists.find((list) => list.id === listId)?.name ?? null,
     [lists]
   );
+
+  /**
+   * Whether this is the desktop app — asked here rather than borrowed from
+   * `autostart.available` because the quit row has no hook of its own to ask:
+   * these are two ways of saying the same thing, and this row's reason for
+   * needing it is the tray menu that only a desktop window has.
+   */
+  const desktop = isTauri();
 
   /**
    * Open the policy in the system browser, not in this window.
@@ -395,15 +409,23 @@ export function SettingsView({
             </div>
           </section>
 
-          {/* Startup — whether the app is running before you ask it to. Placed
-              just above 数据: the sections above it are about how the app
-              behaves, the two below are about what it holds and what it can
-              destroy, and this one row is the last of the first kind.
+          {/* Startup — the app's own life on this machine: whether it is there
+              before you ask it to be, and what leaving does to a session still
+              running. Placed just above 数据: the sections above are about how
+              the app behaves, the two below are about what it holds and what it
+              can destroy, and these two rows are the last of the first kind.
 
-              The only row that edits something outside the app: the login item
-              the OS holds, which is also where its state is read back from, so
-              a refusal (Windows' 任务管理器 can veto an entry) shows up here as
-              a failure rather than as a switch that springs back. */}
+              The autostart row is the only one that edits something outside the
+              app: the login item the OS holds, which is also where its state is
+              read back from, so a refusal (Windows' 任务管理器 can veto an entry)
+              shows up here as a failure rather than as a switch that springs
+              back.
+
+              The quit row keeps its answer here instead, and that is the
+              difference worth noticing between two rows that look alike. The
+              login item's truth lives in the OS, so it cannot be duplicated;
+              quitting is carried out by the webview that holds the focus log, so
+              there is nothing outside to ask — Rust asks us. See `quit.ts`. */}
           <section className="mt-6">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionStartup")}
@@ -420,6 +442,19 @@ export function SettingsView({
                   disabled={!autostart.available || autostart.pending}
                   onCheckedChange={(enabled) => { void autostart.setEnabled(enabled); }}
                   aria-label={t("settings.autostart")}
+                />
+              </Row>
+              <Row
+                label={t("settings.quitStopsFocus")}
+                hint={desktop ? undefined : t("settings.desktopOnly")}
+                htmlFor="settings-quit-stops-focus"
+              >
+                <Switch
+                  id="settings-quit-stops-focus"
+                  checked={settings.quitStopsFocus}
+                  disabled={!desktop}
+                  onCheckedChange={setQuitStopsFocus}
+                  aria-label={t("settings.quitStopsFocus")}
                 />
               </Row>
             </div>

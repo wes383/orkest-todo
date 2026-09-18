@@ -156,6 +156,26 @@ function load(): { state: FocusState; spans: FocusSpan[] } {
   return { state, spans: dropBriefSpans(spans) };
 }
 
+/** Closes the stretch still running — or drops it, if it came up short under
+    the rules, in which case the time it covered goes back to plain grey.
+
+    Pulled out of `commit` so the quit path can reach the same decision: it
+    needs the answer without going through a React re-render (see
+    `stopForExit`), and two copies of these rules would be one too many. The
+    end is capped, so a stretch left running overnight closes at the reader's
+    cap rather than at the moment someone finally noticed. Both rules are read
+    live: a change in settings governs the very next stretch. */
+function closeRunning(spans: FocusSpan[], now: number): FocusSpan[] {
+  const last = spans[spans.length - 1];
+  if (!last || last.end !== null) return spans;
+  const { minMs, maxMs } = spanLimits();
+  const end = Math.min(now, last.start + maxMs);
+  if (end - last.start < minMs) return spans.slice(0, -1);
+  // The floor the stretch passed under is frozen onto it: from here on it is on
+  // record, and a later change of the setting re-judges nothing already closed.
+  return [...spans.slice(0, -1), { ...last, end, minMs }];
+}
+
 function writeState(state: FocusState): void {
   try {
     window.localStorage.setItem(STATE_KEY, state);
@@ -226,7 +246,6 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
       const now = Date.now();
 
       patch((prev) => {
-        const last = prev[prev.length - 1];
         // Going to work opens a stretch and leaves it open. Nothing else is
         // written for as long as it runs, however long that is or however many
         // times the app is closed in between.
@@ -237,19 +256,8 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
           ];
         }
         // Coming back closes it — or drops it, if it turned out too brief to
-        // count, in which case the time it covered goes back to plain grey. The
-        // end is capped, so a stretch left running overnight closes at the
-        // reader's cap rather than at the moment someone finally noticed. Both
-        // rules are read live: a change in settings governs the very next
-        // stretch.
-        if (!last || last.end !== null) return prev;
-        const { minMs, maxMs } = spanLimits();
-        const end = Math.min(now, last.start + maxMs);
-        if (end - last.start < minMs) return prev.slice(0, -1);
-        // The floor the stretch passed under is frozen onto it: from here on
-        // it is on record, and a later change of the setting re-judges
-        // nothing that is already closed.
-        return [...prev.slice(0, -1), { ...last, end, minMs }];
+        // count. Both rules live in `closeRunning`, which the quit path shares.
+        return closeRunning(prev, now);
       });
 
       writeState(to);
@@ -359,6 +367,31 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
     [patch]
   );
 
+  /**
+   * 退出时自动结束专注 — the same close the switch makes, written straight to
+   * storage, because the app is about to be gone.
+   *
+   * `commit("idle")` reaches the same decision but not the same moment: it
+   * leaves the log to the effect that mirrors `spans`, which only runs after
+   * React has re-rendered — and the process is exiting on the other side of
+   * this call. So the log is written here, from the array computed here, and
+   * the switch is moved with it. The store's own state moves too, so nothing
+   * upstream can hold a running stretch that storage no longer has; if the exit
+   * then fails, the app is left in the state it would have been in had the
+   * reader stopped the session by hand a moment earlier.
+   *
+   * A no-op when nothing is running, which is what makes it safe to call on
+   * every quit the setting allows.
+   */
+  const stopForExit = useCallback(() => {
+    const next = closeRunning(spans, Date.now());
+    writeSpans(next);
+    writeState("idle");
+    stateRef.current = "idle";
+    setPersisted((p) => (p.spans === next ? p : { ...p, spans: next }));
+    setState("idle");
+  }, [spans]);
+
   const running =
     state === "useful" && spans[spans.length - 1]?.end === null
       ? spans[spans.length - 1]
@@ -409,6 +442,7 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
     remove,
     forgetList,
     clearAll,
+    stopForExit,
   };
 }
 

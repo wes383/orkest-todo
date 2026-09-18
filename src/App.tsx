@@ -60,6 +60,7 @@ import { useFocusStore } from "@/lib/focus-store";
 import { useFocusWidgetBridge, useFocusWidgetVisibility } from "@/lib/focus-widget";
 import { useAchievementToasts } from "@/lib/achievement-toasts";
 import { useAutostart } from "@/lib/autostart";
+import { useQuitStopsFocus } from "@/lib/quit";
 import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
@@ -112,7 +113,8 @@ export default function App() {
       edits them and the sidebar and the focus log read them, so the state
       lives here between them. Declared before the focus store: the store's
       auto-stop timer takes its cap from here. */
-  const { settings, setViewVisible, setSpanLimits, setWidgetOpacity } = useSettings();
+  const { settings, setViewVisible, setSpanLimits, setWidgetOpacity, setQuitStopsFocus } =
+    useSettings();
 
   /*
    * The focus log, live — held here rather than inside the focus view so that
@@ -358,6 +360,15 @@ export default function App() {
   );
 
   useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
+
+  /*
+   * 退出时自动结束专注 — the tray's 退出 is asked for, not taken, so that this
+   * can answer it: the setting decides, and `stopForExit` closes the session
+   * and writes it before the process goes. Off by default, in which case the
+   * quit is simply answered straight away.
+   */
+  useQuitStopsFocus(settings.quitStopsFocus, focus.stopForExit);
+
   const focusWidget = useFocusWidgetVisibility();
   /** 开机自启 lives in the OS, not in a store here — the hook reads it from
       there and writes back to it; see `autostart.ts`. */
@@ -662,6 +673,7 @@ export default function App() {
             setViewVisible={setViewVisible}
             setSpanLimits={setSpanLimits}
             setWidgetOpacity={setWidgetOpacity}
+            setQuitStopsFocus={setQuitStopsFocus}
             autostart={autostart}
             focusWidget={focusWidget}
             onDeleteAllData={() => {

@@ -38,6 +38,11 @@ export interface AppSettings {
       CSS tokens — the widget is a window of its own, with a document of its
       own, so nothing it renders can inherit from this one. */
   widgetOpacity: number;
+  /** Whether quitting the app also stops a session that is still running.
+      Lives here rather than in Rust, unlike the login item: the rule and the
+      log it writes to belong to the same side, so the native side asks the
+      webview instead of keeping a copy of this; see `quit.ts`. */
+  quitStopsFocus: boolean;
 }
 
 const STORAGE_KEY = "orkest-settings.v1";
@@ -66,6 +71,9 @@ const DEFAULTS: AppSettings = {
   minSpanMinutes: DEFAULT_MIN_SPAN_MINUTES,
   maxSpanHours: 8,
   widgetOpacity: DEFAULT_WIDGET_OPACITY,
+  // Off: quitting has always meant the session keeps running, and a rule that
+  // ends work on its own is one a reader should turn on deliberately.
+  quitStopsFocus: false,
 };
 
 /** One number out of a file someone may have hand-edited: anything that is not
@@ -79,6 +87,14 @@ function num(value: unknown, fallback: number, lo: number, hi: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(hi, Math.max(lo, parsed));
+}
+
+/** One boolean out of a file someone may have hand-edited: anything that is not
+    a boolean falls back to the shipped default. Worth reading through rather
+    than writing `?? default` — `"false"` is a string, and therefore truthy, so
+    a quoted value left behind by hand would switch a rule on. */
+function bool(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function load(): AppSettings {
@@ -102,6 +118,7 @@ function load(): AppSettings {
       widgetOpacity: Math.round(
         num(parsed.widgetOpacity, DEFAULTS.widgetOpacity, MIN_WIDGET_OPACITY, 100)
       ),
+      quitStopsFocus: bool(parsed.quitStopsFocus, DEFAULTS.quitStopsFocus),
     };
   } catch {
     return DEFAULTS;
@@ -164,5 +181,15 @@ export function useSettings() {
     setSettings((s) => ({ ...s, widgetOpacity }));
   }, []);
 
-  return { settings, setViewVisible, setSpanLimits, setWidgetOpacity };
+  const setQuitStopsFocus = useCallback((quitStopsFocus: boolean) => {
+    setSettings((s) => ({ ...s, quitStopsFocus }));
+  }, []);
+
+  return {
+    settings,
+    setViewVisible,
+    setSpanLimits,
+    setWidgetOpacity,
+    setQuitStopsFocus,
+  };
 }

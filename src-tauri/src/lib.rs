@@ -425,6 +425,26 @@ async fn open_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
  */
 const TRAY_COMMAND_EVENT: &str = "tray:command";
 
+/**
+ * The channel Rust uses to ask the frontend to wrap up before the process ends.
+ *
+ * The tray's 退出 cannot simply call `app.exit(0)`: the focus log is a
+ * localStorage record the native side cannot reach, so 「退出时自动结束专注」 is a
+ * rule only the webview can carry out. The click asks, and the frontend answers
+ * by calling [`quit_app`].
+ */
+const QUIT_REQUESTED: &str = "quit:requested";
+
+/**
+ * How long [`request_quit`] waits for that answer before ending the process
+ * anyway.
+ *
+ * Generous next to the round trip it covers — one localStorage write and one
+ * IPC call — and only ever spent in full when there is nobody left to answer:
+ * a crashed renderer, or a window that never finished loading.
+ */
+const QUIT_FALLBACK: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /** What the frontend receives on [`TRAY_COMMAND_EVENT`]. */
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
@@ -644,6 +664,46 @@ fn emit_command(app: &AppHandle, command: TrayCommand) {
   let _ = app.emit_to(MAIN_WINDOW, TRAY_COMMAND_EVENT, command);
 }
 
+/**
+ * 托盘里的「退出 Orkest Todo」, asked rather than taken.
+ *
+ * This row used to end the process on the spot, and that is still what happens
+ * — via the fallback below. What changed is that it is no longer the *first*
+ * move: whether a session should be closed on the way out is a preference the
+ * webview holds, and only the webview can close one, so the exit is the
+ * frontend's answer to a question rather than a decision taken here.
+ *
+ * The fallback thread is armed before the ask, not after it: a webview that is
+ * gone — a crashed renderer, a window that never finished loading — must not be
+ * able to turn 退出 into a button that does nothing. In the ordinary case the
+ * process is already gone when the sleep ends, and the thread goes with it.
+ */
+fn request_quit(app: &AppHandle) {
+  let handle = app.clone();
+  std::thread::spawn(move || {
+    std::thread::sleep(QUIT_FALLBACK);
+    handle.exit(0);
+  });
+  let _ = app.emit_to(MAIN_WINDOW, QUIT_REQUESTED, ());
+}
+
+/**
+ * The frontend's answer to [`QUIT_REQUESTED`]: it has done whatever it wanted to
+ * do before the process ends, so end it now.
+ *
+ * The main window alone, unlike the widget-facing commands. The widget may drive
+ * the tray's own row (see `authorize_widget_control`), but a small floating pill
+ * that can close the whole app is not a thing anything on it should mean.
+ */
+#[tauri::command]
+fn quit_app(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
+  if window.label() != MAIN_WINDOW {
+    return Err("Only the main window may quit the app".into());
+  }
+  app.exit(0);
+  Ok(())
+}
+
 fn open_view(app: &AppHandle, view: &'static str) {
   reveal_main_window(app);
   emit_command(app, TrayCommand::OpenView { view });
@@ -745,9 +805,11 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
       }
       MENU_TOGGLE_WIDGET => queue_focus_widget_change(app, None),
       MENU_OPEN_WINDOW => reveal_main_window(app),
-      // Deliberately NOT `window.close()`: that request is intercepted below and
-      // would only hide the window again. `app.exit` is the real way out.
-      MENU_QUIT => app.exit(0),
+      // Asked first rather than taken: the frontend may have a session to close
+      // on the way out. See `request_quit` for the fallback that keeps a dead
+      // webview from stranding the app. Deliberately NOT `window.close()`: that
+      // request is intercepted below and would only hide the window again.
+      MENU_QUIT => request_quit(app),
       id => {
         // Matched against `VIEW_ROWS` rather than repeating the ids as literals,
         // so a new row cannot end up as a menu entry that silently does nothing.
@@ -1017,7 +1079,7 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .invoke_handler(tauri::generate_handler![
       greet, sync_tray, save_csv_files, get_focus_widget_enabled,
-      set_focus_widget_enabled, focus_widget_layout, open_main_window,
+      set_focus_widget_enabled, focus_widget_layout, open_main_window, quit_app,
     ])
     .setup(|app| {
       let config_path = app.path().app_config_dir()?.join("focus-widget.json");
@@ -1208,5 +1270,16 @@ mod tests {
     assert_eq!(label_toggle_widget(Lang::En, true), "Hide focus widget");
     assert_eq!(label_toggle_widget(Lang::Zh, false), "显示专注悬浮窗");
     assert_eq!(label_toggle_widget(Lang::Zh, true), "隐藏专注悬浮窗");
+  }
+
+  /// There is no compile-time bridge between the two languages, and the one
+  /// mismatch that can hide is this event's name: a rename on either side costs
+  /// a stalled exit — the fallback ends the process with no session ever closed
+  /// — which reads as the setting simply not working. So it is pinned here, the
+  /// way the tray's view ids are pinned by the runtime guard in `tray.ts`.
+  #[test]
+  fn quit_event_name_matches_the_frontend_listener() {
+    let source = include_str!("../../src/lib/quit.ts");
+    assert!(source.contains(&format!("\"{QUIT_REQUESTED}\"")));
   }
 }
