@@ -43,6 +43,13 @@ export interface AppSettings {
       log it writes to belong to the same side, so the native side asks the
       webview instead of keeping a copy of this; see `quit.ts`. */
   quitStopsFocus: boolean;
+  /** What the ✕ does. `true` parks the window in the tray and leaves the app
+      running; `false` closes the app itself, the way the tray's 退出 does.
+      Rust has to have this *before* the close request rather than at the moment
+      of it — `prevent_close` is decided inside the window event handler — so
+      unlike `quitStopsFocus` this one is mirrored down to the native side on
+      every change; see `useCloseToTray` in `quit.ts`. */
+  closeToTray: boolean;
 }
 
 const STORAGE_KEY = "orkest-settings.v1";
@@ -74,6 +81,10 @@ const DEFAULTS: AppSettings = {
   // Off: quitting has always meant the session keeps running, and a rule that
   // ends work on its own is one a reader should turn on deliberately.
   quitStopsFocus: false,
+  // Off, so the ✕ on a fresh install is the ordinary one — it closes the app.
+  // Parking in the tray is the habit of a background resident, and it has to be
+  // asked for: the tray icon is not where most people look for a running app.
+  closeToTray: false,
 };
 
 /** One number out of a file someone may have hand-edited: anything that is not
@@ -119,6 +130,7 @@ function load(): AppSettings {
         num(parsed.widgetOpacity, DEFAULTS.widgetOpacity, MIN_WIDGET_OPACITY, 100)
       ),
       quitStopsFocus: bool(parsed.quitStopsFocus, DEFAULTS.quitStopsFocus),
+      closeToTray: bool(parsed.closeToTray, DEFAULTS.closeToTray),
     };
   } catch {
     return DEFAULTS;
@@ -185,11 +197,19 @@ export function useSettings() {
     setSettings((s) => ({ ...s, quitStopsFocus }));
   }, []);
 
+  /** Stored here, and mirrored to the native side by `useCloseToTray` — the
+      window's own event handler is where the answer is needed, and it cannot
+      wait for a hook to be read. */
+  const setCloseToTray = useCallback((closeToTray: boolean) => {
+    setSettings((s) => ({ ...s, closeToTray }));
+  }, []);
+
   return {
     settings,
     setViewVisible,
     setSpanLimits,
     setWidgetOpacity,
     setQuitStopsFocus,
+    setCloseToTray,
   };
 }

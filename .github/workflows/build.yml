@@ -106,10 +106,6 @@ jobs:
 
             The builds are unsigned, so macOS and SmartScreen may both complain
             about an unknown developer on first launch.
-
-            **Privacy** — Orkest Todo collects nothing and makes no network
-            requests. What it stores, and where, is in the
-            [privacy policy](https://github.com/wes383/orkest-todo/blob/main/PRIVACY.md).
           # The per-platform hook for extra `tauri build` flags. Unset on every
           # row today, which resolves to no extra arguments.
           args: ${{ matrix.args }}

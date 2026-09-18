@@ -143,6 +143,10 @@ export interface SettingsViewProps {
       this one how it goes, and both are habits of the app rather than of the
       work. */
   setQuitStopsFocus: (value: boolean) => void;
+  /** 关闭窗口时最小化到托盘 — whether the ✕ parks the window in the tray or
+      closes the app. Mirrored down to the window handler in Rust, which is the
+      side that has to answer a close request; see `useCloseToTray`. */
+  setCloseToTray: (value: boolean) => void;
   /** 开机自启 — the OS login item, read and written by the plugin rather than
       stored here; see `autostart.ts` for why it is the one row with no entry in
       `AppSettings`. */
@@ -171,6 +175,7 @@ export function SettingsView({
   setSpanLimits,
   setWidgetOpacity,
   setQuitStopsFocus,
+  setCloseToTray,
   onDeleteAllData,
   autostart,
   focusWidget,
@@ -198,9 +203,9 @@ export function SettingsView({
 
   /**
    * Whether this is the desktop app — asked here rather than borrowed from
-   * `autostart.available` because the quit row has no hook of its own to ask:
-   * these are two ways of saying the same thing, and this row's reason for
-   * needing it is the tray menu that only a desktop window has.
+   * `autostart.available` because the two rows below have no hook of their own
+   * to ask: these are two ways of saying the same thing, and their reason for
+   * needing it is the tray, which only a desktop window has.
    */
   const desktop = isTauri();
 
@@ -410,10 +415,11 @@ export function SettingsView({
           </section>
 
           {/* Startup — the app's own life on this machine: whether it is there
-              before you ask it to be, and what leaving does to a session still
-              running. Placed just above 数据: the sections above are about how
-              the app behaves, the two below are about what it holds and what it
-              can destroy, and these two rows are the last of the first kind.
+              before you ask it to be, what the ✕ does with it, and what leaving
+              does to a session still running. Placed just above 数据: the
+              sections above are about how the app behaves, the two below are
+              about what it holds and what it can destroy, and these three rows
+              are the last of the first kind.
 
               The autostart row is the only one that edits something outside the
               app: the login item the OS holds, which is also where its state is
@@ -421,11 +427,15 @@ export function SettingsView({
               shows up here as a failure rather than as a switch that springs
               back.
 
-              The quit row keeps its answer here instead, and that is the
-              difference worth noticing between two rows that look alike. The
-              login item's truth lives in the OS, so it cannot be duplicated;
-              quitting is carried out by the webview that holds the focus log, so
-              there is nothing outside to ask — Rust asks us. See `quit.ts`. */}
+              The other two keep their answers here, and the difference is worth
+              noticing between rows that look alike. The login item's truth lives
+              in the OS, so it cannot be duplicated; these two are both about
+              leaving, and leaving is carried out either by the webview (closing
+              the session — it holds the focus log) or by the window handler in
+              Rust (hiding or exiting). So one is asked for at the moment of the
+              quit and the other is pushed down in advance — a close request has
+              to be answered inside the event, where there is nobody to ask. See
+              `quit.ts` for both. */}
           <section className="mt-6">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionStartup")}
@@ -442,6 +452,19 @@ export function SettingsView({
                   disabled={!autostart.available || autostart.pending}
                   onCheckedChange={(enabled) => { void autostart.setEnabled(enabled); }}
                   aria-label={t("settings.autostart")}
+                />
+              </Row>
+              <Row
+                label={t("settings.closeToTray")}
+                hint={desktop ? undefined : t("settings.desktopOnly")}
+                htmlFor="settings-close-to-tray"
+              >
+                <Switch
+                  id="settings-close-to-tray"
+                  checked={settings.closeToTray}
+                  disabled={!desktop}
+                  onCheckedChange={setCloseToTray}
+                  aria-label={t("settings.closeToTray")}
                 />
               </Row>
               <Row

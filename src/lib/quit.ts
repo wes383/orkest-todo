@@ -3,20 +3,26 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 /**
- * 退出时自动结束专注 — the frontend's half of leaving.
+ * Leaving the app — the frontend's half of it.
  *
- * Leaving is Rust's to do: the tray's 退出 ends the process, and on its own it
- * would end it on the spot. But a focus session is a localStorage record the
- * native side cannot reach, so a session that is still running can only be
- * closed from here. Rust therefore asks rather than takes (`request_quit` in
- * `src-tauri/src/lib.rs`), this answers by calling `quit_app`, and the process
- * ends once the answer is given. The native side keeps a timer armed against no
- * answer at all, so a webview that is gone cannot strand the app.
+ * Two doors lead out, and both are Rust's to open: the tray's 退出, and the ✕
+ * whenever 「关闭窗口时最小化到托盘」 is off (see `on_window_event` in
+ * `src-tauri/src/lib.rs`). Neither may end the process on the spot, because a
+ * focus session is a localStorage record the native side cannot reach — a session
+ * that is still running can only be closed from here. Rust therefore asks rather
+ * than takes (`request_quit`), this answers by calling `quit_app`, and the
+ * process ends once the answer is given. The native side keeps a timer armed
+ * against no answer at all, so a webview that is gone cannot strand the app.
  *
- * Which is also why this is a preference in `settings.ts` rather than a
- * mirrored boolean in Rust: the decision and the write it leads to both belong
- * to the side that owns the log. Rust asks a question, not "how should I
- * behave".
+ * Which is also why 退出时自动结束专注 is a preference in `settings.ts` rather than
+ * a mirrored boolean in Rust: the decision and the write it leads to both belong
+ * to the side that owns the log. Rust asks a question, not "how should I behave".
+ *
+ * The one thing Rust does need to know in advance is which of the two things the
+ * ✕ is — so `useCloseToTray` below pushes that down instead of waiting to be
+ * asked. Not for symmetry's sake: a close request has to be answered inside the
+ * window event handler, where `prevent_close` is decided there and then and there
+ * is no moment to ask anything.
  *
  * Nothing here applies to `pnpm dev` in a plain browser: there is no tray, no
  * 退出, and no window to close the session for.
@@ -27,6 +33,13 @@ import { listen } from "@tauri-apps/api/event";
  * by a unit test, since a rename on either end fails silently.
  */
 const QUIT_REQUESTED = "quit:requested";
+
+/**
+ * Must match the command registered in `src-tauri/src/lib.rs`, pinned there by a
+ * unit test for the same reason: a rename costs nothing at build time and shows
+ * up only as a ✕ that ignores the switch.
+ */
+const SET_CLOSE_TO_TRAY = "set_close_to_tray";
 
 export function useQuitStopsFocus(
   stopFocus: boolean,
@@ -77,4 +90,24 @@ export function useQuitStopsFocus(
       unlisten?.();
     };
   }, []);
+}
+
+/**
+ * 关闭窗口时最小化到托盘 — told to the side that answers the ✕, rather than
+ * stored, because that side is the one that has to act on it.
+ *
+ * Pushed once when the app mounts and again whenever the switch moves. The push
+ * that never lands is survivable rather than silently wrong: Rust's own default
+ * is the same `false` this setting ships with (`WindowClose::default`), and the
+ * window cannot be closed by anyone before it has painted.
+ */
+export function useCloseToTray(closeToTray: boolean): void {
+  useEffect(() => {
+    if (!isTauri()) return;
+    invoke(SET_CLOSE_TO_TRAY, { closeToTray }).catch((error: unknown) => {
+      // The switch keeps its own value in `settings.ts`, so the worst case is a
+      // ✕ that does the other thing until the app is restarted.
+      console.warn("[quit] failed to hand the close behaviour down", error);
+    });
+  }, [closeToTray]);
 }

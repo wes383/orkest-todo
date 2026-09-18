@@ -408,9 +408,11 @@ async fn open_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
 /*
  * ── Tray plumbing ─────────────────────────────────────────────
  *
- * Orkest is a background-resident app: the close button parks it in the system
- * tray rather than quitting, so the tray icon is the only route back to the
- * window and the only route out of the process.
+ * Orkest is a tray-resident app: the window can be parked in the system tray
+ * (see 「关闭窗口时最小化到托盘」, which is what the close button does when it is
+ * on), so the tray icon is one of the ways back to the window — and, for as long
+ * as the process is up, the tray menu is the one route to everything the window
+ * is not: the views, the focus switch, 退出.
  */
 
 /**
@@ -444,6 +446,30 @@ const QUIT_REQUESTED: &str = "quit:requested";
  * a crashed renderer, or a window that never finished loading.
  */
 const QUIT_FALLBACK: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/**
+ * 关闭窗口: what the ✕ button does with the app.
+ *
+ * Two answers, one switch. With `to_tray` set, the window is hidden and the app
+ * keeps running in the tray — the behaviour this used to have unconditionally.
+ * Without it, closing the window leaves the app, and it leaves through
+ * [`request_quit`]: 「退出应用时结束进行中的专注」 then covers the ✕ and the tray's
+ * 退出 with one rule rather than two.
+ *
+ * Pushed down from the frontend instead of asked of it, unlike `quitStopsFocus`
+ * (which lives only in `settings.ts`). A close request has to be answered
+ * *inside* the window event handler — `prevent_close` is a decision taken there
+ * and then, with no round trip to hide a question behind — so the webview
+ * pushes the answer once on boot and again whenever the switch moves, and this
+ * is where it lands.
+ */
+#[derive(Default)]
+struct WindowClose {
+  /** `Default` is the shipped answer, and it is `false`: 关闭窗口 leaves the
+      app. Keeping a window that never loaded able to close is a free second
+      reason. */
+  to_tray: AtomicBool,
+}
 
 /** What the frontend receives on [`TRAY_COMMAND_EVENT`]. */
 #[derive(Clone, serde::Serialize)]
@@ -621,9 +647,9 @@ struct TrayMenu {
 /// Bring the main window back to the foreground.
 ///
 /// The window can be off-screen in two different states, so both have to be
-/// undone: 最小化 leaves it *visible but minimized*, while the close button
-/// (see `on_window_event` below) hides it outright. `show()` alone would leave
-/// a minimized window sitting in the taskbar.
+/// undone: 最小化 leaves it *visible but minimized*, while the close button (see
+/// `on_window_event` below) hides it outright when 「关闭窗口时最小化到托盘」 is
+/// on. `show()` alone would leave a minimized window sitting in the taskbar.
 fn reveal_main_window(app: &AppHandle) {
   if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
     let _ = window.unminimize();
@@ -665,7 +691,8 @@ fn emit_command(app: &AppHandle, command: TrayCommand) {
 }
 
 /**
- * 托盘里的「退出 Orkest Todo」, asked rather than taken.
+ * 托盘里的「退出 Orkest Todo」, asked rather than taken — and the route the
+ * close button now takes as well, whenever 「关闭窗口时最小化到托盘」 is off.
  *
  * This row used to end the process on the spot, and that is still what happens
  * — via the fallback below. What changed is that it is no longer the *first*
@@ -701,6 +728,28 @@ fn quit_app(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> 
     return Err("Only the main window may quit the app".into());
   }
   app.exit(0);
+  Ok(())
+}
+
+/**
+ * The frontend's answer to "what should the ✕ do", pushed down on boot and
+ * whenever the switch moves. See [`WindowClose`] for why it is pushed at all.
+ *
+ * Main window only, like [`quit_app`]: how the app leaves is not something the
+ * floating pill should be able to decide for it.
+ */
+#[tauri::command]
+fn set_close_to_tray(
+  window: tauri::WebviewWindow,
+  app: AppHandle,
+  close_to_tray: bool,
+) -> Result<(), String> {
+  if window.label() != MAIN_WINDOW {
+    return Err("Only the main window may decide how the app closes".into());
+  }
+  if let Some(state) = app.try_state::<WindowClose>() {
+    state.to_tray.store(close_to_tray, Ordering::SeqCst);
+  }
   Ok(())
 }
 
@@ -1034,8 +1083,9 @@ pub fn run() {
    * Single instance, registered first so a second launch is intercepted before
    * any window is created.
    *
-   * This matters far more now that closing the window parks the app in the
-   * tray. "我以为已经退出了、其实还在后台" becomes a normal state, and the obvious
+   * This matters whenever the window is parked rather than closed — the tray
+   * toggle, and the ✕ itself under 「关闭窗口时最小化到托盘」. "我以为已经退出了、其实
+   * 还在后台" is a normal state there, and the obvious
    * next move is to double-click the exe again. Two live instances share one
    * WebView2 data directory — i.e. one `orkest-todo.v1` localStorage key — and
    * each holds the state it read at startup, so whichever instance writes last
@@ -1080,6 +1130,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       greet, sync_tray, save_csv_files, get_focus_widget_enabled,
       set_focus_widget_enabled, focus_widget_layout, open_main_window, quit_app,
+      set_close_to_tray,
     ])
     .setup(|app| {
       let config_path = app.path().app_config_dir()?.join("focus-widget.json");
@@ -1089,6 +1140,10 @@ pub fn run() {
         operation: Mutex::new(()),
         config_path,
       });
+      // Defaults to the shipped answer until the webview says otherwise; the
+      // window cannot be closed by anyone before it has painted, so the push
+      // that follows the first render always beats the first ✕.
+      app.manage(WindowClose::default());
       build_tray(app)?;
       let handle = app.handle().clone();
       tauri::async_runtime::spawn_blocking(move || {
@@ -1109,19 +1164,34 @@ pub fn run() {
     .on_window_event(|window, event| {
       if let WindowEvent::CloseRequested { api, .. } = event {
         /*
-         * 「关闭窗口」 = 收进系统托盘，而不是退出。
+         * 「关闭窗口」 — two answers, one switch, read here.
          *
-         * This is unconditional and covers *every* close path — the ✕ button,
-         * Alt+F4 and the taskbar's 关闭窗口 menu item. Quitting the app has to go
-         * through `app.exit(0)` (the tray menu's 退出), because `window.close()`
-         * and `window.destroy()` both land right back here.
+         * Parked in the tray, or the ordinary exit. The tray answer is what this
+         * used to do unconditionally and is still what 「关闭窗口时最小化到托盘」
+         * asks for; the other answer leaves the app, and it leaves through the
+         * same `request_quit` the tray's 退出 uses — so a running session is
+         * closed on the way out whichever door was taken, under one rule.
+         *
+         * The request is prevented first either way, because the decision is
+         * ours to carry out: `window.close()` and `window.destroy()` both land
+         * straight back here. Both answers cover every close path — the ✕
+         * button, Alt+F4 and the taskbar's 关闭窗口 menu item.
          */
         if window.label() == FOCUS_WIDGET {
           api.prevent_close();
           queue_focus_widget_change(window.app_handle(), Some(false));
         } else if window.label() == MAIN_WINDOW {
           api.prevent_close();
-          let _ = window.hide();
+          let to_tray = window
+            .app_handle()
+            .try_state::<WindowClose>()
+            .map(|state| state.to_tray.load(Ordering::SeqCst))
+            .unwrap_or(false);
+          if to_tray {
+            let _ = window.hide();
+          } else {
+            request_quit(window.app_handle());
+          }
         }
       }
     })
@@ -1281,5 +1351,22 @@ mod tests {
   fn quit_event_name_matches_the_frontend_listener() {
     let source = include_str!("../../src/lib/quit.ts");
     assert!(source.contains(&format!("\"{QUIT_REQUESTED}\"")));
+  }
+
+  /// Both halves of the same silence. A rename here would not break a build
+  /// either: the ✕ would simply stop consulting the switch and keep parking the
+  /// app in the tray, which reads as the setting having no effect.
+  #[test]
+  fn close_to_tray_command_name_matches_the_frontend_caller() {
+    let source = include_str!("../../src/lib/quit.ts");
+    assert!(source.contains("\"set_close_to_tray\""));
+  }
+
+  /// The shipped answer, and it has to stay `false` to match
+  /// `DEFAULTS.closeToTray` in `settings.ts`: a window that closes takes the app
+  /// with it unless someone asked for the tray.
+  #[test]
+  fn window_close_defaults_to_leaving_the_app() {
+    assert!(!WindowClose::default().to_tray.load(Ordering::SeqCst));
   }
 }

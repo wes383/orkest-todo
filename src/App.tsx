@@ -60,7 +60,7 @@ import { useFocusStore } from "@/lib/focus-store";
 import { useFocusWidgetBridge, useFocusWidgetVisibility } from "@/lib/focus-widget";
 import { useAchievementToasts } from "@/lib/achievement-toasts";
 import { useAutostart } from "@/lib/autostart";
-import { useQuitStopsFocus } from "@/lib/quit";
+import { useCloseToTray, useQuitStopsFocus } from "@/lib/quit";
 import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
@@ -113,8 +113,14 @@ export default function App() {
       edits them and the sidebar and the focus log read them, so the state
       lives here between them. Declared before the focus store: the store's
       auto-stop timer takes its cap from here. */
-  const { settings, setViewVisible, setSpanLimits, setWidgetOpacity, setQuitStopsFocus } =
-    useSettings();
+  const {
+    settings,
+    setViewVisible,
+    setSpanLimits,
+    setWidgetOpacity,
+    setQuitStopsFocus,
+    setCloseToTray,
+  } = useSettings();
 
   /*
    * The focus log, live — held here rather than inside the focus view so that
@@ -366,8 +372,14 @@ export default function App() {
    * can answer it: the setting decides, and `stopForExit` closes the session
    * and writes it before the process goes. Off by default, in which case the
    * quit is simply answered straight away.
+   *
+   * The ✕ goes through the same ask whenever 「关闭窗口时最小化到托盘」 is off, so
+   * one rule covers both ways out — which is why the close switch is pushed down
+   * from here too: Rust has to know which of the two the ✕ is before it can
+   * answer it.
    */
   useQuitStopsFocus(settings.quitStopsFocus, focus.stopForExit);
+  useCloseToTray(settings.closeToTray);
 
   const focusWidget = useFocusWidgetVisibility();
   /** 开机自启 lives in the OS, not in a store here — the hook reads it from
@@ -674,6 +686,7 @@ export default function App() {
             setSpanLimits={setSpanLimits}
             setWidgetOpacity={setWidgetOpacity}
             setQuitStopsFocus={setQuitStopsFocus}
+            setCloseToTray={setCloseToTray}
             autostart={autostart}
             focusWidget={focusWidget}
             onDeleteAllData={() => {
