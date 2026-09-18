@@ -48,7 +48,7 @@ For questions or problems, open an issue in the repository: <https://github.com/
 
 ---
 
-## 隐私政策
+## 中文
 
 **一句话：Orkest Todo 不收集、不上传、不共享你的任何信息。** 任务、清单、专注记录和设置全部保存在你自己的电脑上，应用代码里没有任何一行会把它们发往网络。
 
