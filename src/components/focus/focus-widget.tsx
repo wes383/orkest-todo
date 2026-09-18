@@ -40,6 +40,11 @@ function useWidgetSurface() {
   const [edge, setEdge] = useState<string | null>(null);
   const [hovering, setHovering] = useState(false);
   const [failed, setFailed] = useState(false);
+  // One-shot edge transition tag driving the CSS animations: "unfold" = the
+  // pill slides out of the edge, "dock" = the tab slides out of the edge
+  // after a drag dock, "predock" = the pill tucks into the edge while the
+  // window is still pill-sized (hover leave).
+  const [motion, setMotion] = useState<"dock" | "unfold" | "predock" | "hidden" | null>(null);
   const alive = useRef(false);
   const expandedRef = useRef(false);
   const dockedRef = useRef(false);
@@ -48,12 +53,29 @@ function useWidgetSurface() {
   // cursor has left the tab's hot zone once, so docking under the resting
   // cursor does not instantly pop it back open.
   const requireExitRef = useRef(false);
+  // Last known docked edge (kept while the pill is expanded) so the edge
+  // animations know which way the screen edge is.
+  const edgeRef = useRef<string | null>(null);
+  // True from "tuck-in started" until the dock layout call resolves, so the
+  // cursor poll neither re-triggers nor double-animates.
+  const predockRef = useRef(false);
+  const prevDocked = useRef<boolean | null>(null);
+  const motionTimer = useRef<number | null>(null);
   const desired = useRef<Layout | null>(null);
   const working = useRef(false);
   const gesture = useRef<Gesture | null>(null);
   const suppressClick = useRef(false);
   const statusRef = useRef<HTMLButtonElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
+
+  const playMotion = useCallback((kind: "dock" | "unfold" | "predock") => {
+    if (motionTimer.current !== null) window.clearTimeout(motionTimer.current);
+    setMotion(kind);
+    motionTimer.current = window.setTimeout(() => {
+      motionTimer.current = null;
+      setMotion(null);
+    }, kind === "unfold" ? 300 : 240);
+  }, []);
 
   const flush = useCallback(async () => {
     if (working.current || !alive.current) return;
@@ -114,15 +136,57 @@ function useWidgetSurface() {
         const pending = desired.current;
         if (!pending) break;
         desired.current = null;
+        // Pre-apply the undock render BEFORE the window resizes: the pill DOM
+        // starts its slide-out animation translated past the viewport, so the
+        // webview paints nothing while Rust grows/moves the window (resize
+        // and position are separate OS calls). Rendering the docked tab
+        // inside the resized window was what made the right-edge tab jump
+        // sideways for a few frames on expand.
+        const unfolding = dockedRef.current && !pending.dock && !pending.snap;
+        if (unfolding) {
+          dockedRef.current = false;
+          prevDocked.current = false;
+          setDocked(false);
+          setExpanded(pending.expanded);
+          setEdge(edgeRef.current);
+          setHovering(hoverRef.current);
+          // Park the pill past the screen edge, fully invisible, and wait for
+          // the browser to actually PAINT that blank frame before telling
+          // Rust to resize/move the window. Without the wait the IPC can beat
+          // the compositor, and WebView2 re-anchors the last painted frame
+          // (the docked tab, hugging the OLD window's left) inside the
+          // already-resized window — the tab visibly jumps with the window's
+          // left edge. Two rAFs guarantee one painted frame in between.
+          setMotion("hidden");
+          await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          });
+          if (!alive.current) break;
+        }
         const result = await invoke<LayoutResult>("focus_widget_layout", pending);
         if (alive.current && !desired.current) {
           setExpanded(result.docked ? false : pending.expanded);
+          const wasDocked = prevDocked.current;
+          prevDocked.current = result.docked;
           dockedRef.current = result.docked;
           setDocked(result.docked);
-          setEdge(result.docked ? result.edge : null);
+          if (result.edge) edgeRef.current = result.edge;
+          setEdge(result.edge ?? edgeRef.current);
           if (result.docked) {
             hoverRef.current = false;
             requireExitRef.current = true;
+            if (predockRef.current) {
+              // The pill already tucked itself into the edge; the tab takes
+              // over without a second slide.
+              predockRef.current = false;
+              setMotion(null);
+            } else if (wasDocked === false) {
+              playMotion("dock");
+            }
+          } else if (unfolding) {
+            // The window has settled at pill geometry and the blank frame is
+            // on screen — now the slide-out animation is safe to run.
+            playMotion("unfold");
           }
           setHovering(hoverRef.current && !result.docked);
         }
@@ -131,6 +195,8 @@ function useWidgetSurface() {
       desired.current = null;
       gesture.current = null;
       if (alive.current) {
+        // A failed layout must not leave the surface parked invisible.
+        setMotion(null);
         setFailed(true);
         setDragging(false);
       }
@@ -138,7 +204,7 @@ function useWidgetSurface() {
       working.current = false;
       if (alive.current) setChanging(Boolean(desired.current));
     }
-  }, []);
+  }, [playMotion]);
 
   const layout = useCallback((next: boolean, snap = false, dock = false) => {
     expandedRef.current = next;
@@ -215,6 +281,7 @@ function useWidgetSurface() {
       disposed = true;
       alive.current = false;
       desired.current = null;
+      if (motionTimer.current !== null) window.clearTimeout(motionTimer.current);
       const g = gesture.current;
       gesture.current = null;
       if (g?.target.hasPointerCapture(g.id)) g.target.releasePointerCapture(g.id);
@@ -232,7 +299,7 @@ function useWidgetSurface() {
     let cancelled = false;
     let misses = 0;
     const tick = async () => {
-      if (cancelled || gesture.current || desired.current || working.current) return;
+      if (cancelled || gesture.current || desired.current || working.current || predockRef.current) return;
       try {
         const win = getCurrentWindow();
         const [position, size, scale, cursor] = await Promise.all([
@@ -261,9 +328,21 @@ function useWidgetSurface() {
           // While the panel is expanded the widget never auto-collapses;
           // the leave counter only applies to the hover-expanded pill.
           misses = inside ? 0 : misses + 1;
-          if (misses >= 2) {
-            hoverRef.current = false;
-            layout(false, true, true);
+          if (misses >= 2 && !predockRef.current) {
+            // Play the tuck-in while the window is still pill-sized, then
+            // let the layout command swap it for the tab.
+            predockRef.current = true;
+            playMotion("predock");
+            window.setTimeout(() => {
+              if (!alive.current) return;
+              if (gesture.current) {
+                // Grabbed mid-tuck: keep the pill open instead of docking.
+                predockRef.current = false;
+                setMotion(null);
+                return;
+              }
+              layout(false, true, true);
+            }, 160);
           }
         }
       } catch {
@@ -275,7 +354,7 @@ function useWidgetSurface() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [docked, hovering, layout]);
+  }, [docked, hovering, layout, playMotion]);
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary || event.button !== 0 || !isTauri()) return;
@@ -334,6 +413,7 @@ function useWidgetSurface() {
     docked,
     edge,
     hovering,
+    motion,
     failed,
     setFailed,
     statusRef,
@@ -430,6 +510,7 @@ export function FocusWidget() {
       aria-label={t("focus.title")}
       data-docked={surface.docked}
       data-edge={surface.edge ?? undefined}
+      data-motion={surface.motion ?? undefined}
       onContextMenu={(event) => event.preventDefault()}
     >
       <div
