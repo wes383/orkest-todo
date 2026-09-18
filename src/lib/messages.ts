@@ -320,10 +320,10 @@ const zh = {
   "focus.session.elapsed": "已进行 {value}",
 
   /* ── Focus · durations, clocks and hour names ────────────── */
-  "focus.duration.seconds": "{n} 秒",
-  "focus.duration.minutes": "{n} 分钟",
-  "focus.duration.hours": "{n} 小时",
-  "focus.duration.hoursMinutes": "{h} 小时 {m} 分",
+  "focus.duration.seconds": "{n} sec",
+  "focus.duration.minutes": "{n} min",
+  "focus.duration.hours": "{n} h",
+  "focus.duration.hoursMinutes": "{h} h {m} min",
   "focus.hour.am": "上午{h}点",
   "focus.hour.pm": "下午{h}点",
   "focus.hour.h24": "{h}时",

@@ -71,7 +71,7 @@ function minUsefulMs(): number {
 /** The most a stretch that is *still running* is credited. A switch left on by
     mistake stops counting there instead of quietly swallowing the whole night.
     An end already written is never trimmed to it. */
-function maxUsefulMs(): number {
+export function maxUsefulMs(): number {
   return spanLimits().maxMs;
 }
 
@@ -135,6 +135,10 @@ export function duration(ms: number, lang: Language): string {
   const minutes = Math.round(ms / 60_000);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
+  // Past 100 hours the minutes are noise — a fraction of a percent — and the
+  // long tail (`1235 h 30 min`) overflows the narrow metric tiles, so whole
+  // hours carry the number from there on.
+  if (h >= 100) return translate(lang, "focus.duration.hours", { n: h });
   if (h === 0) return translate(lang, "focus.duration.minutes", { n: m });
   if (m === 0) return translate(lang, "focus.duration.hours", { n: h });
   return translate(lang, "focus.duration.hoursMinutes", { h, m });

@@ -240,8 +240,8 @@ function SessionClock({ start }: { start: number }) {
 export interface FocusViewProps {
   store: FocusStore;
   lists: TodoList[];
-  /** The list the sidebar is showing, which a new session opens wearing. */
-  sidebarListId: string | null;
+  /** The list a new session opens wearing — the most recent stretch's list. */
+  defaultListId: string | null;
   /** The statistics live on a page of their own now; the rail is one of the
       doors into it. */
   onOpenStats: () => void;
@@ -250,7 +250,7 @@ export interface FocusViewProps {
 export function FocusView({
   store,
   lists,
-  sidebarListId,
+  defaultListId,
   onOpenStats,
 }: FocusViewProps) {
   const { t } = useI18n();
@@ -279,9 +279,9 @@ export function FocusView({
         el.style.transition = "";
         el.style.transform = `translateX(${-to * 50}%)`;
       }
-      moveSwitch(ORDER[to], sidebarListId);
+      moveSwitch(ORDER[to], defaultListId);
     },
-    [moveSwitch, sidebarListId]
+    [moveSwitch, defaultListId]
   );
 
   // The arrow keys mirror the slide — but not while a field has the caret,

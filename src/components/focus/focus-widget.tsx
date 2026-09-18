@@ -192,7 +192,9 @@ function useWidgetSurface() {
         try {
           const win = getCurrentWindow();
           const [size, scale] = await Promise.all([win.outerSize(), win.scaleFactor()]);
-          layout(false, false, size.width / scale < 160);
+          // Mirror Rust's widget_is_docked: left/right tabs are 36 wide, the
+          // top tab keeps the pill width but is only 36 tall.
+          layout(false, false, size.width / scale < 160 || size.height / scale < 60);
         } catch {
           layout(false);
         }
@@ -255,7 +257,9 @@ function useWidgetSurface() {
             hoverRef.current = true;
             layout(false, false, false);
           }
-        } else if (hoverRef.current) {
+        } else if (hoverRef.current && !expandedRef.current) {
+          // While the panel is expanded the widget never auto-collapses;
+          // the leave counter only applies to the hover-expanded pill.
           misses = inside ? 0 : misses + 1;
           if (misses >= 2) {
             hoverRef.current = false;
@@ -408,7 +412,8 @@ export function FocusWidget() {
     clearError();
     try {
       await action();
-      surface.layout(false);
+      // Keep the panel open: collapsing is always an explicit action
+      // (status click, outside click, Escape).
       if (restoreFocus) surface.statusRef.current?.focus({ preventScroll: true });
     } catch {
       surface.setFailed(true);
@@ -425,6 +430,7 @@ export function FocusWidget() {
       aria-label={t("focus.title")}
       data-docked={surface.docked}
       data-edge={surface.edge ?? undefined}
+      onContextMenu={(event) => event.preventDefault()}
     >
       <div
         ref={surface.surfaceRef}
@@ -458,7 +464,7 @@ export function FocusWidget() {
             <span className="focus-widget-heading">
               <span className="focus-widget-label">{status}</span>
             </span>
-            <span className={cn("focus-widget-detail", failed && "text-red")} title={detail}>
+            <span className={cn("focus-widget-detail", failed && "text-red")}>
               {detail}
             </span>
           </span>

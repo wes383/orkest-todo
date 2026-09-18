@@ -728,9 +728,9 @@ body:has(.focus-widget),
 }
 
 /* Docked edge tab: the window shrinks to 36x76 (left/right edges) or
-   76x36 (top/bottom), matching the collapsed pill's height; the tab hugs
-   the screen edge with square corners on the edge side and rounded corners
-   facing the screen interior. */
+   216x36 (top edge, matching the pill's width); the tab hugs the screen
+   edge with square corners on the edge side and rounded corners facing
+   the screen interior. Bottom-edge docking is disabled. */
 .focus-widget[data-docked="true"] {
   width: 36px;
   height: 76px;
@@ -742,15 +742,9 @@ body:has(.focus-widget),
 }
 
 .focus-widget[data-docked="true"][data-edge="top"] {
-  width: 76px;
+  width: 216px;
   height: 36px;
   padding: 0 4px 4px 4px;
-}
-
-.focus-widget[data-docked="true"][data-edge="bottom"] {
-  width: 76px;
-  height: 36px;
-  padding: 4px 4px 0 4px;
 }
 
 .focus-widget[data-docked="true"] .focus-widget-surface {
@@ -771,11 +765,6 @@ body:has(.focus-widget),
 .focus-widget[data-docked="true"][data-edge="top"] .focus-widget-surface {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
-}
-
-.focus-widget[data-docked="true"][data-edge="bottom"] .focus-widget-surface {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
 }
 
 .focus-widget[data-docked="true"] .focus-widget-status {

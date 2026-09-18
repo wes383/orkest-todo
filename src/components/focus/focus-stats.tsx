@@ -79,6 +79,7 @@ import {
   hourName,
   hourTotals,
   inScope,
+  maxUsefulMs,
   monthBars,
   peakHour,
   periodDays,
@@ -376,6 +377,47 @@ function Arrow({ fragment }: { fragment: boolean }) {
       <path d="M1 4h11" strokeDasharray={fragment ? "2 2.5" : undefined} />
       <path d="M12 1.5 15 4l-3 2.5" />
     </svg>
+  );
+}
+
+/** The live tally on the running row. It keeps a one-second beat of its own
+    so the page's slow 30-second clock is not dragged along with it: only this
+    badge re-renders each second, every other figure on the page stays put.
+    The tally reads through the cap the same way the 30-second path does — a
+    useful stretch left running is credited at most `maxUsefulMs`. */
+function RunningBadge({
+  start,
+  language,
+  label,
+}: {
+  start: number;
+  language: Language;
+  label: string;
+}) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    // Deferred by a hair rather than run in the effect body, where a
+    // synchronous write would land mid-commit.
+    const first = window.setTimeout(tick, 0);
+    const beat = window.setInterval(tick, 1000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(beat);
+    };
+  }, []);
+  const closed = Math.min(now ?? start, start + maxUsefulMs());
+  return (
+    <span className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-muted px-2.5 text-xs font-medium text-foreground-muted">
+      <span
+        aria-hidden="true"
+        className="h-1.5 w-1.5 rounded-full bg-focus-useful"
+      />
+      {label}
+      <span className="tabular-nums">
+        {durationWithSeconds(closed - start, language)}
+      </span>
+    </span>
   );
 }
 
@@ -1426,17 +1468,14 @@ export function FocusStats({
                                     // still open: a badge rather than a field,
                                     // because there is nothing to edit yet. It
                                     // carries its own tally, so the row can be
-                                    // read without looking to the right edge.
-                                    <span className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-muted px-2.5 text-xs font-medium text-foreground-muted">
-                                      <span
-                                        aria-hidden="true"
-                                        className="h-1.5 w-1.5 rounded-full bg-focus-useful"
-                                      />
-                                      {t("focus.log.running")}
-                                      <span className="tabular-nums">
-                                        {elapsed}
-                                      </span>
-                                    </span>
+                                    // read without looking to the right edge —
+                                    // and its own clock, so the tally walks
+                                    // second by second.
+                                    <RunningBadge
+                                      start={span.start}
+                                      language={language}
+                                      label={t("focus.log.running")}
+                                    />
                                   ) : row.intoLater && span.end === null ? (
                                     // A stretch still open has no end to move, so
                                     // the day it ran on into stays read-only here:

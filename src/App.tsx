@@ -297,6 +297,19 @@ export default function App() {
   }, []);
 
   /*
+   * Starting focus files the stretch under the list of the most recent
+   * stretch — the thing the user was last focusing on — rather than the
+   * sidebar's current selection. A list that has since been deleted falls
+   * back to unassigned. Before the first ever session there is nothing to
+   * remember, so that first stretch is unassigned too.
+   */
+  const lastFocusListId = useMemo(() => {
+    const last = focus.spans[focus.spans.length - 1];
+    if (!last) return null;
+    return lists.some((list) => list.id === last.listId) ? last.listId : null;
+  }, [focus.spans, lists]);
+
+  /*
    * The tray menu's click handler. Rust has already brought the window to the
    * front by the time this runs — all that is left is the part the native side
    * cannot express: what 今天 means, where the caret should go, and which way
@@ -328,24 +341,24 @@ export default function App() {
       if (command.action === "toggle-focus") {
         /*
          * The exact move the focus screen's own switch makes — same store, same
-         * list filing (`filters.listId`, the sidebar's selection) — only fired
-         * from behind the window, which stays wherever it is.
+         * list filing (`lastFocusListId`, the most recent stretch's list) —
+         * only fired from behind the window, which stays wherever it is.
          */
         focus.commit(
           focus.state === "useful" ? "idle" : "useful",
-          filters.listId
+          lastFocusListId
         );
         return;
       }
 
       selectView(command.view);
     },
-    [selectView, focus.commit, focus.state, filters.listId, screen]
+    [selectView, focus.commit, focus.state, lastFocusListId, screen]
   );
 
   useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
   const focusWidget = useFocusWidgetVisibility();
-  useFocusWidgetBridge(focus, language, lists, filters.listId);
+  useFocusWidgetBridge(focus, language, lists, lastFocusListId);
 
   const handleQuickAdd = useCallback(
     (draft: QuickInput) => {
@@ -608,7 +621,7 @@ export default function App() {
           <FocusView
             store={focus}
             lists={lists}
-            sidebarListId={filters.listId}
+            defaultListId={lastFocusListId}
             onOpenStats={() => setScreen("stats")}
           />
         ) : screen === "stats" ? (

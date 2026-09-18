@@ -93,14 +93,17 @@ impl WidgetLayoutState {
 
 /// A widget is "docked" when its window is one of the small edge tabs.
 /// Pill is 248 logical wide, expanded pill too, tabs are 48 or 96 wide.
-fn widget_is_docked(width: i64, scale: f64) -> bool {
-  (width as f64 / scale) < 160.0
+fn widget_is_docked(width: i64, height: i64, scale: f64) -> bool {
+  // Left/right tabs are 36 wide; the top tab keeps the pill's 216 width but
+  // is only 36 tall. The pill itself is 216x76.
+  (width as f64 / scale) < 160.0 || (height as f64 / scale) < 60.0
 }
 
 /// Picks the nearest work-area edge within `threshold`, or `None` when the
-/// window floats far from every edge. Ties resolve left, right, top, bottom.
-fn dock_edge(left: i64, right: i64, top: i64, bottom: i64, threshold: i64) -> Option<&'static str> {
-  let candidates = [("left", left), ("right", right), ("top", top), ("bottom", bottom)];
+/// pointer floats far from every edge. Docking to the bottom edge is
+/// disabled by design; ties resolve left, right, top.
+fn dock_edge(left: i64, right: i64, top: i64, threshold: i64) -> Option<&'static str> {
+  let candidates = [("left", left), ("right", right), ("top", top)];
   let mut best: Option<(&'static str, i64)> = None;
   for (edge, gap) in candidates {
     if gap < 0 || gap > threshold {
@@ -192,11 +195,12 @@ fn layout_focus_widget(
         ),
       ),
     };
-    let edge = dock_edge(gaps.0, gaps.1, gaps.2, gaps.3, dock_threshold);
+    let edge = dock_edge(gaps.0, gaps.1, gaps.2, dock_threshold);
     if let Some(edge) = edge {
       // Tab height matches the collapsed pill (76) so hover expansion does
-      // not change the tab's visible height.
-      let (tab_w, tab_h) = if edge == "left" || edge == "right" { (36.0, 76.0) } else { (76.0, 36.0) };
+      // not change the tab's visible height; the top tab spans the pill's
+      // full width (216).
+      let (tab_w, tab_h) = if edge == "left" || edge == "right" { (36.0, 76.0) } else { (216.0, 36.0) };
       let size = tauri::LogicalSize::new(tab_w, tab_h).to_physical::<u32>(scale);
       let (x, y) = docked_tab(
         edge,
@@ -214,7 +218,7 @@ fn layout_focus_widget(
     .to_physical::<u32>(scale);
   // Expanding out of a docked tab keeps the center fixed so hover
   // expand/collapse cycles do not drift the pill along the edge.
-  let (x, y) = if !dock && widget_is_docked(old_size.width as i64, scale) {
+  let (x, y) = if !dock && widget_is_docked(old_size.width as i64, old_size.height as i64, scale) {
     (
       position.x as i64 + (old_size.width as i64 - size.width as i64) / 2,
       position.y as i64 + (old_size.height as i64 - size.height as i64) / 2,
@@ -306,7 +310,7 @@ fn change_focus_widget_enabled(app: &AppHandle, enabled: bool) -> Result<(), Str
       let scale = window.scale_factor().map_err(|e| e.to_string())?;
       let inner = window.inner_size().map_err(|e| e.to_string())?;
       let expanded = inner.height as f64 / scale > 150.0;
-      let docked = widget_is_docked(inner.width as i64, scale);
+      let docked = widget_is_docked(inner.width as i64, inner.height as i64, scale);
       layout_focus_widget(window, expanded, false, docked, None)?;
       window.show().map_err(|e| e.to_string())?;
     } else {
@@ -1076,16 +1080,17 @@ mod tests {
 
   #[test]
   fn dock_edge_picks_nearest_edge_within_threshold_only() {
-    assert_eq!(dock_edge(0, 752, 400, 324, 48), Some("left"));
-    assert_eq!(dock_edge(8, 744, 400, 324, 48), Some("left"));
-    assert_eq!(dock_edge(48, 704, 400, 324, 48), Some("left"));
-    assert_eq!(dock_edge(49, 703, 400, 324, 48), None);
-    assert_eq!(dock_edge(752, 0, 400, 324, 48), Some("right"));
-    assert_eq!(dock_edge(400, 324, 0, 752, 48), Some("top"));
-    assert_eq!(dock_edge(400, 324, 752, 0, 48), Some("bottom"));
-    assert_eq!(dock_edge(400, 400, 400, 400, 48), None);
-    assert_eq!(dock_edge(12, 400, 12, 400, 48), Some("left"));
-    assert_eq!(dock_edge(400, 12, 12, 400, 48), Some("right"));
+    assert_eq!(dock_edge(0, 752, 400, 48), Some("left"));
+    assert_eq!(dock_edge(8, 744, 400, 48), Some("left"));
+    assert_eq!(dock_edge(48, 704, 400, 48), Some("left"));
+    assert_eq!(dock_edge(49, 703, 400, 48), None);
+    assert_eq!(dock_edge(752, 0, 400, 48), Some("right"));
+    assert_eq!(dock_edge(400, 324, 0, 48), Some("top"));
+    // Bottom-edge docking is disabled: a tiny bottom gap alone never docks.
+    assert_eq!(dock_edge(400, 324, 752, 48), None);
+    assert_eq!(dock_edge(400, 400, 400, 48), None);
+    assert_eq!(dock_edge(12, 400, 12, 48), Some("left"));
+    assert_eq!(dock_edge(400, 12, 12, 48), Some("right"));
   }
 
   #[test]
@@ -1105,11 +1110,13 @@ mod tests {
 
   #[test]
   fn widget_is_docked_matches_tab_sizes_only() {
-    assert!(widget_is_docked(48, 1.0));
-    assert!(widget_is_docked(96, 1.0));
-    assert!(!widget_is_docked(248, 1.0));
-    assert!(widget_is_docked(60, 1.25));
-    assert!(!widget_is_docked(310, 1.25));
+    // Left/right tab 36x76, top tab 216x36, pill 216x76, expanded 216x246.
+    assert!(widget_is_docked(36, 76, 1.0));
+    assert!(widget_is_docked(216, 36, 1.0));
+    assert!(!widget_is_docked(216, 76, 1.0));
+    assert!(!widget_is_docked(216, 246, 1.0));
+    assert!(widget_is_docked(45, 95, 1.25));
+    assert!(!widget_is_docked(270, 95, 1.25));
   }
 
   #[test]
