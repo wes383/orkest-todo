@@ -34,7 +34,7 @@ No analytics, advertising or crash-reporting services. Fonts and icons ship insi
 
 ## Your control
 
-- **Settings → Data → Delete all data** clears every task, list and focus record. It takes effect immediately and cannot be undone.
+- **Settings → Delete all data** clears every task, list and focus record. It takes effect immediately and cannot be undone.
 - Uninstalling the app and then deleting its application-data directory removes what is left, including the widget flag and your interface preferences.
 - Because nothing is ever uploaded, there is no "ask the provider to delete it" step.
 
@@ -82,7 +82,7 @@ Orkest Todo 是开源桌面应用，代码维护在 <https://github.com/wes383/o
 
 ### 你的控制权
 
-- **设置 → 数据 → 删除所有数据**：清除全部任务、清单与专注记录。立即生效，不可撤销。
+- **设置 → 删除所有数据**：清除全部任务、清单与专注记录。立即生效，不可撤销。
 - 卸载应用后，再删除对应的应用数据目录，即可清掉剩余内容（包括悬浮窗开关与界面偏好）。
 - 由于信息从不上传，不存在「向服务商申请删除」这一步。
 
