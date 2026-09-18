@@ -92,6 +92,11 @@ jobs:
           # without touching any release.
           tagName: "${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}"
           releaseName: "${{ startsWith(github.ref, 'refs/tags/v') && format('Orkest Todo {0}', github.ref_name) || '' }}"
+          # The privacy line carries an absolute URL on purpose: a release body
+          # is rendered on the release page, where a relative link would resolve
+          # against the release path instead of the file in the repository. This
+          # release page is the one place a reader is deciding whether to trust
+          # the download, so the link belongs here and not only in the README.
           releaseBody: |
             Download the installer for your platform below.
 
@@ -101,6 +106,10 @@ jobs:
 
             The builds are unsigned, so macOS and SmartScreen may both complain
             about an unknown developer on first launch.
+
+            **Privacy** — Orkest Todo collects nothing and makes no network
+            requests. What it stores, and where, is in the
+            [privacy policy](https://github.com/wes383/orkest-todo/blob/main/PRIVACY.md).
           # The per-platform hook for extra `tauri build` flags. Unset on every
           # row today, which resolves to no extra arguments.
           args: ${{ matrix.args }}

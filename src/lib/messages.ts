@@ -174,6 +174,10 @@ const zh = {
   "settings.maxSpan": "进行中片段的上限",
   "settings.maxSpanHint": "进行中的片段最多计此时长（小时）；已结束的片段不受影响。",
   "settings.sectionData": "数据",
+  "settings.privacy": "隐私政策",
+  "settings.privacyHint":
+    "本应用不收集任何数据：任务、清单与专注记录全部保存在本机。完整文本在代码仓库里。",
+  "settings.privacyAction": "查看",
   "settings.sectionDanger": "危险区",
   "settings.deleteAll": "删除所有数据",
   "settings.deleteAllHint":
@@ -620,6 +624,10 @@ const en: Record<MessageKey, Message> = {
   "settings.maxSpan": "Running span cap",
   "settings.maxSpanHint": "A span still running is credited up to this, in hours; finished spans are unaffected.",
   "settings.sectionData": "Data",
+  "settings.privacy": "Privacy policy",
+  "settings.privacyHint":
+    "Nothing is collected: tasks, lists and focus records stay on this machine. The full text lives in the code repository.",
+  "settings.privacyAction": "View",
   "settings.sectionDanger": "Danger zone",
   "settings.deleteAll": "Delete all data",
   "settings.deleteAllHint":

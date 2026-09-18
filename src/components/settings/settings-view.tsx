@@ -14,7 +14,9 @@
  */
 
 import { useCallback, useState, type ReactNode } from "react";
-import { Download, Trash2 } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Download, ExternalLink, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -60,6 +62,29 @@ const HIDEABLE_LABEL_KEYS: Record<HideableView, MessageKey> = {
 function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
 }
+
+/**
+ * The canonical privacy policy lives in the repository, not in the app: there
+ * it is versioned with the code, so the text a given release shipped with can
+ * still be read afterwards, and it is the one address a release page, a store
+ * listing or a security questionnaire can all point at. In-app text has none of
+ * those properties, and would drift out of step with the next release.
+ *
+ * So the app carries a one-line summary plus this pointer. The summary matters
+ * as much as the link: it is what most readers actually read, and it is what
+ * remains if the reader is offline or GitHub is unreachable.
+ */
+const PRIVACY_URL = "https://github.com/wes383/orkest-todo/blob/main/PRIVACY.md";
+
+/**
+ * The Chinese half of that document sits after the English one, so a Chinese
+ * reader is sent straight to it instead of to a screen of English. The fragment
+ * is percent-encoded by hand because the heading it points at is CJK, and a
+ * heading that cannot be renamed without breaking this is worse than the
+ * alternative: if the fragment ever misses, the reader simply lands at the top
+ * of the document, which is the same place they would have landed anyway.
+ */
+const PRIVACY_URL_ZH = `${PRIVACY_URL}#%E4%B8%AD%E6%96%87`;
 
 /** One row of a settings panel: label (and its explanation) on the left, the
     control on the right, a hairline between rows. */
@@ -147,6 +172,26 @@ export function SettingsView({
       listId === null ? null : lists.find((list) => list.id === listId)?.name ?? null,
     [lists]
   );
+
+  /**
+   * Open the policy in the system browser, not in this window.
+   *
+   * A plain `<a href>` would navigate the webview itself: the app would be
+   * replaced by a GitHub page and a running focus session would go with it —
+   * the same reason `browser-guards` already blocks Ctrl+O. `openUrl` hands the
+   * URL to the OS, so the window never moves.
+   *
+   * Outside the Tauri shell (the plain `pnpm dev` browser) there is no opener to
+   * call, so that path falls back to a new tab.
+   */
+  const openPrivacy = useCallback(() => {
+    const url = language === "zh" ? PRIVACY_URL_ZH : PRIVACY_URL;
+    if (isTauri()) {
+      void openUrl(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [language]);
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground">
@@ -301,10 +346,11 @@ export function SettingsView({
             </div>
           </section>
 
-          {/* Data — the CSV export, moved here from the foot of the statistics
-              page: "everything the log holds" is a whole-app concern. One
-              click now writes two files: the focus log as it always went, and
-              the task set beside it. */}
+          {/* Data — what the app does with what it holds. The CSV export moved
+              here from the foot of the statistics page: "everything the log
+              holds" is a whole-app concern, and one click now writes two files
+              — the focus log as it always went, and the task set beside it.
+              The privacy row answers the other half of the same question. */}
           <section className="mt-6">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionData")}
@@ -337,6 +383,15 @@ export function SettingsView({
                 >
                   <Icon icon={Download} size="sm" />
                   {t("focus.log.exportAction")}
+                </Button>
+              </Row>
+              {/* The policy row sits beside the export because both are about
+                  what happens to the data the app is holding — one hands it
+                  over to you, the other states that nobody else receives it. */}
+              <Row label={t("settings.privacy")} hint={t("settings.privacyHint")}>
+                <Button variant="outline" size="sm" onClick={openPrivacy}>
+                  <Icon icon={ExternalLink} size="sm" />
+                  {t("settings.privacyAction")}
                 </Button>
               </Row>
             </div>
