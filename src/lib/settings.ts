@@ -32,6 +32,12 @@ export interface AppSettings {
       keeps the floor it was closed under and the end its cap gave it. */
   minSpanMinutes: number;
   maxSpanHours: number;
+  /** How much of the desktop shows through the focus widget's pill, as a
+      percentage: 100 is a fully opaque surface. It reaches the widget over the
+      snapshot the theme travels on (`focus-widget.ts`) rather than through the
+      CSS tokens — the widget is a window of its own, with a document of its
+      own, so nothing it renders can inherit from this one. */
+  widgetOpacity: number;
 }
 
 const STORAGE_KEY = "orkest-settings.v1";
@@ -40,6 +46,15 @@ const STORAGE_KEY = "orkest-settings.v1";
     a setting were all judged against it, so it is the value history falls
     back to wherever a stretch carries no floor of its own. */
 export const DEFAULT_MIN_SPAN_MINUTES = 5;
+
+/** The pill ships fully opaque: the desktop showing through is a choice, not a
+    default. */
+export const DEFAULT_WIDGET_OPACITY = 100;
+
+/** The floor for that choice. Below it the pill is invisible yet still takes
+    clicks in the corner of the screen — that reads as a broken app, not as a
+    setting someone made. */
+export const MIN_WIDGET_OPACITY = 20;
 
 const DEFAULTS: AppSettings = {
   hiddenViews: {
@@ -50,10 +65,20 @@ const DEFAULTS: AppSettings = {
   },
   minSpanMinutes: DEFAULT_MIN_SPAN_MINUTES,
   maxSpanHours: 8,
+  widgetOpacity: DEFAULT_WIDGET_OPACITY,
 };
 
-function clamp(value: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, value));
+/** One number out of a file someone may have hand-edited: anything that is not
+    a finite number falls back to the shipped default, anything out of range is
+    pulled to the nearer end.
+
+    `clamp` alone does not cover this — `Math.min`/`Math.max` propagate `NaN`,
+    so `"abc"` would have been stored as `NaN` and read back as `NaN%` in the
+    widget's CSS, which is a value the browser simply drops. */
+function num(value: unknown, fallback: number, lo: number, hi: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(hi, Math.max(lo, parsed));
 }
 
 function load(): AppSettings {
@@ -62,23 +87,20 @@ function load(): AppSettings {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    // Missing keys fall back to visible — an old or partial file never hides
-    // anything the user did not hide themselves. The two focus rules clamp to
-    // their sane ranges rather than trusting whatever a hand-edited file says.
+    // Missing keys fall back to the shipped value — an old or partial file
+    // never hides a view the user did not hide, and never makes a pill they
+    // never dimmed translucent. The three numbers are read through `num`, so a
+    // hand-edited `"abc"` or `9999` lands on the default or on the nearer end
+    // of its range instead of on the screen.
     return {
       hiddenViews: {
         ...DEFAULTS.hiddenViews,
         ...(parsed.hiddenViews ?? {}),
       },
-      minSpanMinutes: clamp(
-        Number(parsed.minSpanMinutes ?? DEFAULTS.minSpanMinutes),
-        0,
-        1440
-      ),
-      maxSpanHours: clamp(
-        Number(parsed.maxSpanHours ?? DEFAULTS.maxSpanHours),
-        1,
-        24
+      minSpanMinutes: num(parsed.minSpanMinutes, DEFAULTS.minSpanMinutes, 0, 1440),
+      maxSpanHours: num(parsed.maxSpanHours, DEFAULTS.maxSpanHours, 1, 24),
+      widgetOpacity: Math.round(
+        num(parsed.widgetOpacity, DEFAULTS.widgetOpacity, MIN_WIDGET_OPACITY, 100)
       ),
     };
   } catch {
@@ -136,5 +158,11 @@ export function useSettings() {
     []
   );
 
-  return { settings, setViewVisible, setSpanLimits };
+  /** Stored as the number the widget interpolates, so the caller's slider is
+      the only place that has to know the range is a percentage. */
+  const setWidgetOpacity = useCallback((widgetOpacity: number) => {
+    setSettings((s) => ({ ...s, widgetOpacity }));
+  }, []);
+
+  return { settings, setViewVisible, setSpanLimits, setWidgetOpacity };
 }

@@ -111,7 +111,7 @@ export default function App() {
       edits them and the sidebar and the focus log read them, so the state
       lives here between them. Declared before the focus store: the store's
       auto-stop timer takes its cap from here. */
-  const { settings, setViewVisible, setSpanLimits } = useSettings();
+  const { settings, setViewVisible, setSpanLimits, setWidgetOpacity } = useSettings();
 
   /*
    * The focus log, live — held here rather than inside the focus view so that
@@ -358,7 +358,9 @@ export default function App() {
 
   useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
   const focusWidget = useFocusWidgetVisibility();
-  useFocusWidgetBridge(focus, language, lists, lastFocusListId);
+  // The widget's appearance is published with everything else it needs, so the
+  // pill dims the moment the slider moves rather than on the next re-request.
+  useFocusWidgetBridge(focus, language, lists, lastFocusListId, settings.widgetOpacity);
 
   const handleQuickAdd = useCallback(
     (draft: QuickInput) => {
@@ -497,6 +499,19 @@ export default function App() {
 
   const handleListDelete = useCallback(
     (list: TodoList) => {
+      /*
+       * The last list stays. The sidebar already refuses it in the UI (it shows
+       * a dialog with no way through), but the rule belongs here too: any later
+       * caller — tray, widget, a command palette — must not reach `removeList`'s
+       * floor behaviour, which re-seeds the default lists and so makes the
+       * delete look ignored rather than refused.
+       */
+      if (lists.length <= 1) {
+        toast(t("sidebar.deleteLastTitle", { name: list.name }), {
+          description: t("sidebar.deleteLastBody"),
+        });
+        return;
+      }
       const { movedTo } = removeList(list.id);
       /*
        * The tasks move to a fallback list; the hours do not. A task re-homed is
@@ -642,6 +657,7 @@ export default function App() {
             settings={settings}
             setViewVisible={setViewVisible}
             setSpanLimits={setSpanLimits}
+            setWidgetOpacity={setWidgetOpacity}
             focusWidget={focusWidget}
             onDeleteAllData={() => {
               store.clearAll();

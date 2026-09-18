@@ -556,6 +556,17 @@ body:has(.focus-widget),
   width: 208px;
   height: 68px;
   overflow: hidden;
+  /* Painted here rather than with `bg-surface` on the element: two places
+     setting one background is one too many.
+
+     The alpha is the user's setting, written as a percentage onto this
+     document's root by the snapshot bridge (`focus-widget.ts`) — the widget is
+     a window of its own, so there is no shared document to hold a token in.
+     100% is both the shipped default and the right answer for the first frame,
+     before any snapshot has landed, which is what the fallback says. The window
+     itself is created `transparent(true)` (lib.rs), so the alpha composites
+     against the desktop rather than against the webview. */
+  background-color: color-mix(in srgb, var(--surface) var(--widget-opacity, 100%), transparent);
   border-width: 1px;
   border-style: solid;
   border-radius: var(--radius-lg);

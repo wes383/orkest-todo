@@ -20,6 +20,10 @@ export interface FocusWidgetSnapshot {
   language: Language;
   theme: string;
   highContrast: boolean;
+  /** How opaque the pill should be, 0–100 — the user's setting, carried here
+      for the same reason the theme is: the widget is its own window, so the
+      only way appearance crosses over is on this snapshot. */
+  widgetOpacity: number;
 }
 
 interface WidgetReply {
@@ -35,9 +39,10 @@ export function useFocusWidgetBridge(
   focus: FocusStore,
   language: Language,
   lists: FocusWidgetList[],
-  defaultListId: string | null
+  defaultListId: string | null,
+  widgetOpacity: number
 ) {
-  const latest = useRef({ focus, language, lists, defaultListId });
+  const latest = useRef({ focus, language, lists, defaultListId, widgetOpacity });
   const publish = useCallback((requestId?: string) => {
     const current = latest.current;
     const root = document.documentElement;
@@ -52,15 +57,16 @@ export function useFocusWidgetBridge(
         language: current.language,
         theme: root.classList.contains("dark") ? "dark" : "light",
         highContrast: root.classList.contains("high-contrast"),
+        widgetOpacity: current.widgetOpacity,
       },
       requestId,
     } satisfies WidgetReply).catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    latest.current = { focus, language, lists, defaultListId };
+    latest.current = { focus, language, lists, defaultListId, widgetOpacity };
     if (isTauri()) void publish();
-  }, [focus, language, lists, defaultListId, publish]);
+  }, [focus, language, lists, defaultListId, widgetOpacity, publish]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -165,6 +171,15 @@ export function useFocusWidgetClient() {
       document.documentElement.classList.toggle("light", value.theme !== "dark");
       document.documentElement.classList.toggle("high-contrast", value.highContrast);
       document.documentElement.lang = value.language === "zh" ? "zh-CN" : "en";
+      // The pill's alpha rides along with the theme, and for the same reason:
+      // this window has no way to read the other window's CSS. `isFinite` keeps
+      // a snapshot from a window that never sent the field (`undefined`) from
+      // writing `NaN%`, which the browser would drop on the floor — the pill
+      // then stays opaque rather than turning into whatever it was last set to.
+      document.documentElement.style.setProperty(
+        "--widget-opacity",
+        `${Number.isFinite(value.widgetOpacity) ? value.widgetOpacity : 100}%`
+      );
     }).then((fn) => {
       if (disposed) { fn(); return; }
       unsubscribe = fn;

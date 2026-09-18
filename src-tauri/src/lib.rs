@@ -255,9 +255,17 @@ fn ensure_focus_widget(app: &AppHandle) -> Result<tauri::WebviewWindow, String> 
     .resizable(false)
     .inner_size(216.0, 76.0)
     .visible(false)
-    .focused(false);
-  #[cfg(not(target_os = "macos"))]
-  let builder = builder.transparent(true);
+    .focused(false)
+    // Transparent on every platform, macOS included — the pill is painted at 85%
+    // (`--widget-surface` in globals.css) and that alpha only reaches the desktop
+    // when the window behind it is transparent. On macOS this method exists
+    // solely under the `macos-private-api` feature, which is why both
+    // `macOSPrivateApi: true` (tauri.conf.json) and the Cargo feature of the same
+    // name are set; `tauri-build` fails the build if the two ever disagree. The
+    // previous `#[cfg(not(target_os = "macos"))]` gate was the price of not
+    // enabling it — an opaque window on macOS is what turned the 85% surface into
+    // a washed-out grey there.
+    .transparent(true);
   let window = builder.build().map_err(|e| e.to_string())?;
   let result = (|| -> Result<(), String> {
     window.set_min_size(None::<tauri::LogicalSize<f64>>).map_err(|e| e.to_string())?;

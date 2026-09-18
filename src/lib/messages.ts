@@ -53,6 +53,7 @@ const zh = {
   "common.save": "保存",
   "common.undo": "撤销",
   "common.clear": "清除",
+  "common.ok": "知道了",
   "common.priority": "优先级",
   "common.dueDate": "截止日期",
   "common.tags": "标签",
@@ -118,6 +119,9 @@ const zh = {
   "sidebar.deleteListTitle": "删除清单「{name}」？",
   "sidebar.deleteListBody":
     "清单会被移除，其中的任务不会被删除，而是移动到剩下的第一个清单里。这个清单的专注记录会保留，但会变为未归类。",
+  "sidebar.deleteLastTitle": "无法删除「{name}」",
+  "sidebar.deleteLastBody":
+    "这是最后一个清单，至少要保留一个。可以先新建一个清单，再来删除它。",
 
   /* ── Lists ───────────────────────────────────────────────── */
   "list.untitled": "未命名清单",
@@ -156,6 +160,8 @@ const zh = {
   "settings.focusWidget": "桌面专注小组件",
   "settings.focusWidgetHint": "始终置顶，可拖拽吸附到屏幕边缘；下次启动保留开关状态。",
   "settings.focusWidgetDesktopOnly": "仅桌面应用支持。",
+  "settings.widgetOpacity": "小组件不透明度",
+  "settings.widgetOpacityHint": "100% 为完全不透明；数值越低，桌面透出来越多。",
   "widget.idle": "休息中",
   "widget.useful": "专注中",
   "widget.start": "开始专注",
@@ -496,6 +502,7 @@ const en: Record<MessageKey, Message> = {
   "common.save": "Save",
   "common.undo": "Undo",
   "common.clear": "Clear",
+  "common.ok": "Got it",
   "common.priority": "Priority",
   "common.dueDate": "Due date",
   "common.tags": "Tags",
@@ -567,6 +574,9 @@ const en: Record<MessageKey, Message> = {
   "sidebar.deleteListTitle": "Delete “{name}”?",
   "sidebar.deleteListBody":
     "The list is removed. Its tasks are not deleted — they move to the first remaining list. Focus sessions logged under it are kept but become unassigned.",
+  "sidebar.deleteLastTitle": "Can’t delete “{name}”",
+  "sidebar.deleteLastBody":
+    "This is the last list, and at least one has to stay. Create another list first, then delete this one.",
 
   /* ── Lists ───────────────────────────────────────────────── */
   "list.untitled": "Untitled list",
@@ -606,6 +616,8 @@ const en: Record<MessageKey, Message> = {
   "settings.focusWidget": "Desktop focus widget",
   "settings.focusWidgetHint": "Always on top. Drag to snap to screen edges. Visibility is remembered on restart.",
   "settings.focusWidgetDesktopOnly": "Available in the desktop app only.",
+  "settings.widgetOpacity": "Widget opacity",
+  "settings.widgetOpacityHint": "100% is fully opaque. Lower values let more of the desktop through.",
   "widget.idle": "Resting",
   "widget.useful": "Focusing",
   "widget.start": "Start focus",

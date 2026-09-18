@@ -531,8 +531,10 @@ export function useTodoStore(lang: Language) {
       const fallback = remaining[0]?.id ?? FALLBACK_LIST_ID;
       setState((s) => ({
         ...s,
-        // Deleting the very last list re-seeds the defaults rather than leaving
-        // the app with no list to add a task to.
+        // A floor, not a feature: nothing in the UI deletes the last list any
+        // more (the sidebar refuses it outright), so this branch only keeps the
+        // "there is always a list to file into" invariant true if a caller ever
+        // slips past — seeding beats leaving quick-add with nowhere to write.
         lists: remaining.length > 0 ? remaining : SEED[lang].lists,
         todos: s.todos.map((t) =>
           t.listId === id ? { ...t, listId: fallback } : t

@@ -45,7 +45,7 @@ import { downloadAll } from "@/components/focus/focus-csv";
 import type { FocusSpan } from "@/lib/focus-spans";
 import { useI18n } from "@/lib/i18n";
 import { LANGUAGES, LANGUAGE_LABELS, type MessageKey } from "@/lib/messages";
-import { HIDEABLE_VIEWS, type AppSettings, type HideableView } from "@/lib/settings";
+import { HIDEABLE_VIEWS, MIN_WIDGET_OPACITY, type AppSettings, type HideableView } from "@/lib/settings";
 import type { Todo, TodoList } from "@/lib/types";
 
 /** Which sidebar row each hideable view names — the sidebar's own message
@@ -130,6 +130,10 @@ export interface SettingsViewProps {
   setViewVisible: (view: HideableView, visible: boolean) => void;
   /** The focus rules the log reads live; see `settings.ts`. */
   setSpanLimits: (minSpanMinutes: number, maxSpanHours: number) => void;
+  /** The focus widget pill's alpha, as a percentage — 100 is opaque. It travels
+      to the widget over the snapshot bridge, not through any CSS of ours: the
+      widget is a window of its own. */
+  setWidgetOpacity: (widgetOpacity: number) => void;
   /** The settings page's own trigger — App clears both stores behind it, so
       the button stays a declaration and the wiping stays where the data is. */
   onDeleteAllData: () => void;
@@ -149,6 +153,7 @@ export function SettingsView({
   settings,
   setViewVisible,
   setSpanLimits,
+  setWidgetOpacity,
   onDeleteAllData,
   focusWidget,
 }: SettingsViewProps) {
@@ -302,6 +307,38 @@ export function SettingsView({
                   onCheckedChange={(enabled) => { void focusWidget.setVisible(enabled); }}
                   aria-label={t("settings.focusWidget")}
                 />
+              </Row>
+              {/* The pill's alpha sits directly under the switch that decides
+                  whether there is a pill at all. A slider rather than a typed
+                  number, unlike the two rules below: this is a value you tune
+                  by looking at the thing, and every step of a drag goes
+                  straight out over the snapshot bridge — the widget is its own
+                  preview. Its floor is in `settings.ts`, where the value is
+                  read back as well as set. */}
+              <Row
+                label={t("settings.widgetOpacity")}
+                hint={t("settings.widgetOpacityHint")}
+                htmlFor="settings-widget-opacity"
+              >
+                <div className="flex items-center gap-2.5">
+                  <input
+                    id="settings-widget-opacity"
+                    type="range"
+                    min={MIN_WIDGET_OPACITY}
+                    max={100}
+                    step={5}
+                    value={settings.widgetOpacity}
+                    onChange={(event) => setWidgetOpacity(Number(event.target.value))}
+                    className="w-40 accent-[color:var(--accent)]"
+                  />
+                  {/* The number beside the track, so the setting is a value and
+                      not just a position. Fixed width: a readout that reflows
+                      between 20% and 100% would shift the track under the
+                      cursor mid-drag. */}
+                  <span className="w-9 shrink-0 text-right text-xs tabular-nums text-foreground-muted">
+                    {settings.widgetOpacity}%
+                  </span>
+                </div>
               </Row>
               <Row
                 label={t("settings.minSpan")}

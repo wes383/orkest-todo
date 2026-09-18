@@ -515,7 +515,7 @@ export function FocusWidget() {
     >
       <div
         ref={surface.surfaceRef}
-        className="focus-widget-surface bg-surface text-foreground border-border"
+        className="focus-widget-surface text-foreground border-border"
         data-expanded={surface.expanded}
         data-dragging={surface.dragging}
         {...surface.hitProps}

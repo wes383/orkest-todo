@@ -125,6 +125,16 @@ export function Sidebar({
   const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<TodoList | null>(null);
 
+  /*
+   * The last list cannot be deleted. Quick-add needs a list to file a task
+   * into — and `removeList` at its floor would resurrect the seeded defaults,
+   * so the delete would look *ignored* rather than refused. Choosing 删除清单
+   * on the last row therefore still opens a dialog; that dialog just has no way
+   * through. The menu items stay enabled on purpose: a prompt states the rule,
+   * a greyed-out row only hints at one.
+   */
+  const lastList = pendingDelete !== null && lists.length <= 1;
+
   return (
     <aside className="no-select flex w-[264px] shrink-0 flex-col border-r border-border bg-sidebar">
       <ScrollArea className="flex-1">
@@ -390,8 +400,9 @@ export function Sidebar({
         </nav>
       </div>
 
+      {/* The confirmation — only ever reached when there is a list to spare. */}
       <AlertDialog
-        open={pendingDelete !== null}
+        open={pendingDelete !== null && !lastList}
         onOpenChange={(open) => !open && setPendingDelete(null)}
       >
         <AlertDialogContent>
@@ -413,6 +424,32 @@ export function Sidebar({
               }}
             >
               {t("sidebar.deleteList")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/*
+       * The refusal: same trigger as the confirmation above, same dialog shape,
+       * one button that only closes. A destructive-tinted primary button with
+       * nothing to confirm would be a lie about what is on offer.
+       */}
+      <AlertDialog
+        open={lastList}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sidebar.deleteLastTitle", { name: pendingDelete?.name ?? "" })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sidebar.deleteLastBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setPendingDelete(null)}>
+              {t("common.ok")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

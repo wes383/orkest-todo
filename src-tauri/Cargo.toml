@@ -21,7 +21,15 @@ tauri-build = { version = "2", features = [] }
 # `tray-icon` is what gives the app a system-tray presence; without it the
 # 「关闭窗口 = 收进托盘」behaviour in `src/lib.rs` would leave the process with no
 # way back to the foreground.
-tauri = { version = "2", features = ["tray-icon"] }
+#
+# `macos-private-api` is what makes `WebviewWindowBuilder::transparent` exist at
+# all on macOS: it turns on `wry/transparent` + `wry/fullscreen` +
+# `tauri-runtime/macos-private-api`, all of which are empty on Windows/Linux, so
+# this line costs the other platforms nothing. It must be declared here *and* as
+# `macOSPrivateApi: true` in tauri.conf.json — `tauri-build` diffs the two and
+# fails the build when they disagree (in either direction). The price is private
+# APIs on macOS, which rules out the App Store; this app ships GitHub Releases.
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-opener = "2"
 # Second launch focuses the running window instead of starting a rival process —
 # see the comment in `src/lib.rs`, this is a data-loss guard, not a nicety.
