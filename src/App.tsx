@@ -59,6 +59,7 @@ import { useTodoStore, type TodoDraft } from "@/lib/store";
 import { useFocusStore } from "@/lib/focus-store";
 import { useFocusWidgetBridge, useFocusWidgetVisibility } from "@/lib/focus-widget";
 import { useAchievementToasts } from "@/lib/achievement-toasts";
+import { useAutostart } from "@/lib/autostart";
 import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
@@ -358,6 +359,9 @@ export default function App() {
 
   useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
   const focusWidget = useFocusWidgetVisibility();
+  /** 开机自启 lives in the OS, not in a store here — the hook reads it from
+      there and writes back to it; see `autostart.ts`. */
+  const autostart = useAutostart();
   // The widget's appearance is published with everything else it needs, so the
   // pill dims the moment the slider moves rather than on the next re-request.
   useFocusWidgetBridge(focus, language, lists, lastFocusListId, settings.widgetOpacity);
@@ -658,6 +662,7 @@ export default function App() {
             setViewVisible={setViewVisible}
             setSpanLimits={setSpanLimits}
             setWidgetOpacity={setWidgetOpacity}
+            autostart={autostart}
             focusWidget={focusWidget}
             onDeleteAllData={() => {
               store.clearAll();

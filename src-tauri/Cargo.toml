@@ -41,6 +41,14 @@ serde_json = "1"
 # needs "ask once, write what the frontend already built", and this keeps the
 # capability surface empty.
 rfd = "0.15"
+# 开机自启. Deliberately a plugin rather than a command of ours: the OS
+# registration *is* the feature, and `auto-launch` already knows the three places
+# such a flag lives — the Windows `Run` key, a macOS LaunchAgent plist, a Linux
+# autostart `.desktop` — and how to quote an executable path into each. It is
+# also the only plugin here the user can see from outside the app; the settings
+# page's 启动 row is its face, and `autostart:default` in capabilities is its
+# door.
+tauri-plugin-autostart = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -10,7 +10,8 @@
  *
  * Each section is one panel of rows: a quiet label on the left, its control on
  * the right. The page reads top-down in the order a new user meets the app —
- * how it looks, what it says, what it shows, what it hands over.
+ * how it looks, what it says, what it shows, whether it is there at all when
+ * you sit down (启动), what it hands over.
  */
 
 import { useCallback, useState, type ReactNode } from "react";
@@ -137,6 +138,16 @@ export interface SettingsViewProps {
   /** The settings page's own trigger — App clears both stores behind it, so
       the button stays a declaration and the wiping stays where the data is. */
   onDeleteAllData: () => void;
+  /** 开机自启 — the OS login item, read and written by the plugin rather than
+      stored here; see `autostart.ts` for why it is the one row with no entry in
+      `AppSettings`. */
+  autostart: {
+    enabled: boolean;
+    pending: boolean;
+    error: boolean;
+    available: boolean;
+    setEnabled: (value: boolean) => Promise<void>;
+  };
   focusWidget: {
     enabled: boolean;
     pending: boolean;
@@ -155,6 +166,7 @@ export function SettingsView({
   setSpanLimits,
   setWidgetOpacity,
   onDeleteAllData,
+  autostart,
   focusWidget,
 }: SettingsViewProps) {
   const { t, language, setLanguage } = useI18n();
@@ -297,7 +309,7 @@ export function SettingsView({
             <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
               <Row
                 label={t("settings.focusWidget")}
-                hint={t(focusWidget.error ? "widget.error" : focusWidget.available ? "settings.focusWidgetHint" : "settings.focusWidgetDesktopOnly")}
+                hint={t(focusWidget.error ? "widget.error" : focusWidget.available ? "settings.focusWidgetHint" : "settings.desktopOnly")}
                 htmlFor="settings-focus-widget"
               >
                 <Switch
@@ -378,6 +390,36 @@ export function SettingsView({
                     )
                   }
                   className="h-9 w-24 rounded-md text-sm"
+                />
+              </Row>
+            </div>
+          </section>
+
+          {/* Startup — whether the app is running before you ask it to. Placed
+              just above 数据: the sections above it are about how the app
+              behaves, the two below are about what it holds and what it can
+              destroy, and this one row is the last of the first kind.
+
+              The only row that edits something outside the app: the login item
+              the OS holds, which is also where its state is read back from, so
+              a refusal (Windows' 任务管理器 can veto an entry) shows up here as
+              a failure rather than as a switch that springs back. */}
+          <section className="mt-6">
+            <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
+              {t("settings.sectionStartup")}
+            </SubsectionLabel>
+            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+              <Row
+                label={t("settings.autostart")}
+                hint={t(autostart.error ? "widget.error" : autostart.available ? "settings.autostartHint" : "settings.desktopOnly")}
+                htmlFor="settings-autostart"
+              >
+                <Switch
+                  id="settings-autostart"
+                  checked={autostart.enabled}
+                  disabled={!autostart.available || autostart.pending}
+                  onCheckedChange={(enabled) => { void autostart.setEnabled(enabled); }}
+                  aria-label={t("settings.autostart")}
                 />
               </Row>
             </div>

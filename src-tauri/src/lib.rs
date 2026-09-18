@@ -985,6 +985,34 @@ pub fn run() {
     reveal_main_window(app);
   }));
 
+  /*
+   * 开机自启.
+   *
+   * The plugin owns the whole feature, and that is the point: the login item it
+   * writes *is* the state, so nothing in this crate mirrors it. The settings
+   * page asks the plugin — and therefore the OS — what the answer is, and
+   * writes back through it the same way. A boolean kept on our side would be a
+   * second answer that can disagree with the system: 任务管理器's 启动 tab owns
+   * one, so does a manual edit of the LaunchAgent.
+   *
+   * `LaunchAgent` is macOS's shape of that login item. It writes a plist we can
+   * remove again, and unlike `AppleScript` it never asks the user for
+   * Automation permission. Windows and Linux ignore the choice and use their
+   * own mechanisms — the `Run` key, an autostart `.desktop`.
+   *
+   * Gated on desktop like the plugin itself, which is compiled out entirely on
+   * Android/iOS: there is no login item there to write.
+   *
+   * `None` is the argument list: an autostarted launch carries no marker and is
+   * an ordinary launch, window and all. Nothing in the app branches on how it
+   * was started, so a marker would be an argument nobody reads.
+   */
+  #[cfg(desktop)]
+  let builder = builder.plugin(tauri_plugin_autostart::init(
+    tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+    None,
+  ));
+
   builder
     .plugin(tauri_plugin_opener::init())
     .invoke_handler(tauri::generate_handler![
@@ -1166,6 +1194,7 @@ mod tests {
       serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
     assert_eq!(value["capabilities"][0]["permissions"], serde_json::json!([
       "core:default", "core:window:allow-set-theme", "opener:default",
+      "autostart:default",
     ]));
     assert_eq!(value["capabilities"][1]["permissions"], serde_json::json!([
       "core:default", "core:window:allow-set-position",
