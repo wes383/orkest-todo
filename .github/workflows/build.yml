@@ -86,6 +86,15 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The sync credentials, handed to Vite as process env (it reads
+          # VITE_*-prefixed variables from the environment, with priority
+          # over .env files — which never reach CI, being gitignored). Set
+          # these as repository secrets named exactly VITE_SUPABASE_URL and
+          # VITE_SUPABASE_ANON_KEY. An unset secret renders as an empty
+          # string, and the build still succeeds — the installer would just
+          # carry a sync that points at nothing.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         with:
           # On a `v*` tag this is the tag name. On a manual run started from a
           # branch it is empty, which is how tauri-action is told to build

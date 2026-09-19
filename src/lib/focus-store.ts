@@ -431,6 +431,27 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
     writeState("idle");
   }, [patch]);
 
+  /**
+   * Replaces the whole log and the switch with what the sync merge produced —
+   * the one writer the app has that is not a reader's action (see
+   * `sync/engine.ts`, which is its only caller).
+   *
+   * It goes through the same three steps every other write here uses — the
+   * state, the ref, the effect that mirrors `spans` to storage — so an
+   * imported log is written exactly like a recorded one, and the running
+   * session's auto-stop timer re-arms on whatever the merge says is running
+   * now. The spans arrive already merged, reconciled and sorted; the switch
+   * arrives derived from the tail, so the two cannot disagree.
+   */
+  const importRemote = useCallback((next: FocusSpan[], nextState: FocusState) => {
+    stateRef.current = nextState;
+    setState(nextState);
+    writeState(nextState);
+    setPersisted((p) =>
+      p.spans === next ? p : { version: 1, spans: next }
+    );
+  }, []);
+
   return {
     spans,
     state,
@@ -443,6 +464,7 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
     forgetList,
     clearAll,
     stopForExit,
+    importRemote,
   };
 }
 

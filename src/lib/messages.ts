@@ -186,8 +186,6 @@ const zh = {
   "settings.maxSpanHint": "进行中的片段最多计此时长（小时）；已结束的片段不受影响。",
   "settings.sectionData": "数据",
   "settings.privacy": "隐私政策",
-  "settings.privacyHint":
-    "本应用不收集任何数据：任务、清单与专注记录全部保存在本机。完整文本在代码仓库里。",
   "settings.privacyAction": "查看",
   "settings.sectionDanger": "危险区",
   "settings.deleteAll": "删除所有数据",
@@ -200,6 +198,32 @@ const zh = {
   "settings.deleteAllType": "输入 {keyword} 以确认",
   "settings.deleteAllDone": "已删除所有数据",
   "settings.theme": "主题",
+
+  /* ── Sync ────────────────────────────────────────────────── */
+  "settings.sectionSync": "同步",
+  "sync.enable": "启用同步",
+  "sync.enableHint":
+    "把专注开关与最近两天的专注记录同步到云端，手机端输入同步码即可远程查看与切换。更早的历史只留在本机，不会上传；关闭同步会一并清除云端记录。",
+  "sync.code": "同步码",
+  "sync.codeHint":
+    "首次启用时自动生成；手机端输入同一同步码即可看到这台电脑的专注会话。",
+  "sync.copyCode": "复制",
+  "sync.codeCopied": "同步码已复制",
+  "sync.regenerate": "重新生成",
+  "sync.regenerateTitle": "重新生成同步码？",
+  "sync.regenerateBody":
+    "旧同步码下的云端记录会被清除，所有设备都需要改用新码。此操作无法撤销。",
+  "sync.status": "同步状态",
+  "sync.status.off": "未启用",
+  "sync.status.idle": "已连接",
+  "sync.status.syncing": "同步中…",
+  "sync.status.error": "同步出错：{error}",
+  "sync.lastSync": "上次同步：{time}",
+  "sync.never": "尚未同步",
+  "sync.mobileHint":
+    "用浏览器打开 {url}，输入上面的同步码，即可远程查看与切换专注。",
+  "sync.mobileUrlCopy": "复制手机端网址",
+  "sync.mobileUrlCopied": "网址已复制",
 
   /* ── Toolbar ─────────────────────────────────────────────── */
   "toolbar.searchPlaceholder": "搜索任务…",
@@ -647,8 +671,6 @@ const en: Record<MessageKey, Message> = {
   "settings.maxSpanHint": "A span still running is credited up to this, in hours; finished spans are unaffected.",
   "settings.sectionData": "Data",
   "settings.privacy": "Privacy policy",
-  "settings.privacyHint":
-    "Nothing is collected: tasks, lists and focus records stay on this machine. The full text lives in the code repository.",
   "settings.privacyAction": "View",
   "settings.sectionDanger": "Danger zone",
   "settings.deleteAll": "Delete all data",
@@ -661,6 +683,32 @@ const en: Record<MessageKey, Message> = {
   "settings.deleteAllType": "Type {keyword} to confirm",
   "settings.deleteAllDone": "All data deleted",
   "settings.theme": "Theme",
+
+  /* ── Sync ────────────────────────────────────────────────── */
+  "settings.sectionSync": "Sync",
+  "sync.enable": "Enable sync",
+  "sync.enableHint":
+    "Sync the focus switch and the last two days of focus records to the cloud, so a phone can view and toggle focus remotely once it has the sync code. Older history stays on this machine and is never uploaded; switching sync off clears the cloud as well.",
+  "sync.code": "Sync code",
+  "sync.codeHint":
+    "Generated on first enable; enter the same code on the phone to see this computer's focus session.",
+  "sync.copyCode": "Copy",
+  "sync.codeCopied": "Sync code copied",
+  "sync.regenerate": "Regenerate",
+  "sync.regenerateTitle": "Regenerate the sync code?",
+  "sync.regenerateBody":
+    "The records under the old code are deleted; every device will need the new code. This cannot be undone.",
+  "sync.status": "Sync status",
+  "sync.status.off": "Off",
+  "sync.status.idle": "Connected",
+  "sync.status.syncing": "Syncing…",
+  "sync.status.error": "Sync error: {error}",
+  "sync.lastSync": "Last synced {time}",
+  "sync.never": "Never synced",
+  "sync.mobileHint":
+    "Open {url} in a browser and enter the sync code above to view and toggle focus remotely.",
+  "sync.mobileUrlCopy": "Copy the phone address",
+  "sync.mobileUrlCopied": "Address copied",
 
   /* ── Toolbar ─────────────────────────────────────────────── */
   "toolbar.searchPlaceholder": "Search tasks…",

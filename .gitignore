@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Env files — never committed, in any form, at any depth. The values they
+# hold are baked into builds by Vite (see src/lib/sync/credentials.ts and
+# mobile/src/credentials.ts); the repo itself carries none of them. The
+# one exception is the example, which documents the shape without the values.
+.env
+.env.*
+!.env.example
+
 # Rust build output and the ACL schemas Tauri regenerates on every build.
 # Without this, `src-tauri/target` (several GB) ends up in the repo and in
 # every CI checkout.

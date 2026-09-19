@@ -1,7 +1,13 @@
 # Orkest Todo
 
 A small, fast desktop todo app built with Tauri 2 and React 19. Everything stays
-on your machine — no account, no sync, no server.
+on your machine — no account, no sign-in, no server.
+
+Focus sync is optional and off by default. When you turn it on, the focus switch
+and the last two days of focus records are mirrored through your own Supabase
+project so a phone can watch the clock and flip the switch remotely; the cloud
+is a channel, not an archive, so older history and everything else stays on the
+computer. See [PRIVACY.md](PRIVACY.md) and `supabase-schema.sql`.
 
 ## Getting started
 

@@ -60,6 +60,7 @@ import { useFocusStore } from "@/lib/focus-store";
 import { useFocusWidgetBridge, useFocusWidgetVisibility } from "@/lib/focus-widget";
 import { useAchievementToasts } from "@/lib/achievement-toasts";
 import { useAutostart } from "@/lib/autostart";
+import { useFocusSync } from "@/lib/sync/engine";
 import { useCloseToTray, useQuitStopsFocus } from "@/lib/quit";
 import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
@@ -385,6 +386,10 @@ export default function App() {
   /** 开机自启 lives in the OS, not in a store here — the hook reads it from
       there and writes back to it; see `autostart.ts`. */
   const autostart = useAutostart();
+  /** 同步 — the desktop half of the focus sync, held here the way `autostart`
+      is so the settings page gets one handle and nothing else needs to know
+      it exists; see `sync/engine.ts` for the cycle it runs. */
+  const sync = useFocusSync(focus, lists, settings);
   // The widget's appearance is published with everything else it needs, so the
   // pill dims the moment the slider moves rather than on the next re-request.
   useFocusWidgetBridge(focus, language, lists, lastFocusListId, settings.widgetOpacity);
@@ -689,6 +694,7 @@ export default function App() {
             setCloseToTray={setCloseToTray}
             autostart={autostart}
             focusWidget={focusWidget}
+            sync={sync}
             onDeleteAllData={() => {
               store.clearAll();
               focus.clearAll();

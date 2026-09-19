@@ -14,10 +14,11 @@
  * you sit down (启动), what it hands over.
  */
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Download, ExternalLink, Trash2 } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, Languages, RefreshCw, Trash2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -45,8 +46,10 @@ import { useAppTheme } from "@/components/theme-provider";
 import { downloadAll } from "@/components/focus/focus-csv";
 import type { FocusSpan } from "@/lib/focus-spans";
 import { useI18n } from "@/lib/i18n";
-import { LANGUAGES, LANGUAGE_LABELS, type MessageKey } from "@/lib/messages";
+import { LANGUAGES, LANGUAGE_LABELS, LOCALES, type MessageKey } from "@/lib/messages";
 import { HIDEABLE_VIEWS, MIN_WIDGET_OPACITY, type AppSettings, type HideableView } from "@/lib/settings";
+import { formatCode } from "@/lib/sync/config";
+import type { SyncControls, SyncStatus } from "@/lib/sync/engine";
 import type { Todo, TodoList } from "@/lib/types";
 
 /** Which sidebar row each hideable view names — the sidebar's own message
@@ -71,9 +74,11 @@ function clamp(value: number, lo: number, hi: number): number {
  * listing or a security questionnaire can all point at. In-app text has none of
  * those properties, and would drift out of step with the next release.
  *
- * So the app carries a one-line summary plus this pointer. The summary matters
- * as much as the link: it is what most readers actually read, and it is what
- * remains if the reader is offline or GitHub is unreachable.
+ * So the app carries the pointer itself, and nothing beside it. The one-line
+ * summary that used to sit under the label is gone: a paraphrase invites a
+ * reader to stop at it instead of opening the document, and this one had
+ * quietly gone false the day sync arrived — it still promised that nothing
+ * ever left this machine.
  */
 const PRIVACY_URL = "https://github.com/wes383/orkest-todo/blob/main/PRIVACY.md";
 
@@ -87,16 +92,43 @@ const PRIVACY_URL = "https://github.com/wes383/orkest-todo/blob/main/PRIVACY.md"
  */
 const PRIVACY_URL_ZH = `${PRIVACY_URL}#%E4%B8%AD%E6%96%87`;
 
+/**
+ * The phone page's address. It lives here, not inside the message table,
+ * because it is also what a click puts on the clipboard: the string the hint
+ * prints and the string it copies have to be the same address, and two copies
+ * of it would be free to drift.
+ */
+const MOBILE_URL = "orkest-focus.wesluma.com";
+
+/** The token `sync.mobileHint` marks the address with. */
+const MOBILE_URL_TOKEN = "{url}";
+
+/**
+ * How long the copy button wears its tick. Long enough to be read as an
+ * answer (the toast says the same thing in words), short enough that the
+ * button is back to its normal face before the next thing you want to do.
+ *
+ * The button is disabled for the same stretch: copying the same string twice
+ * within a second is never what was meant, and the second press would only
+ * re-run the tick you are already looking at.
+ */
+const COPY_FEEDBACK_MS = 1600;
+
 /** One row of a settings panel: label (and its explanation) on the left, the
     control on the right, a hairline between rows. */
 function Row({
   label,
   hint,
+  icon,
   htmlFor,
   children,
 }: {
   label: string;
   hint?: string;
+  /** An optional mark in front of the label. Only for the rare row whose
+      subject is worth placing at a glance rather than read — the language
+      row, whose label is one word and whose panel is otherwise bare. */
+  icon?: LucideIcon;
   htmlFor?: string;
   children?: ReactNode;
 }) {
@@ -105,8 +137,16 @@ function Row({
       <div className="min-w-0">
         <label
           htmlFor={htmlFor}
-          className="block text-sm font-medium leading-tight text-foreground"
+          className="flex items-center gap-1.5 text-sm font-medium leading-tight text-foreground"
         >
+          {icon ? (
+            <Icon
+              icon={icon}
+              size="sm"
+              className="text-foreground-muted"
+              aria-hidden
+            />
+          ) : null}
           {label}
         </label>
         {hint ? (
@@ -164,7 +204,17 @@ export interface SettingsViewProps {
     available: boolean;
     setVisible: (enabled: boolean) => Promise<void>;
   };
+  /** 同步 — the desktop half of the focus sync, owned by App the way the
+      autostart row is; see `sync/engine.ts` for what the handle carries. */
+  sync: SyncControls;
 }
+
+const SYNC_STATUS_KEYS: Record<SyncStatus, MessageKey> = {
+  off: "sync.status.off",
+  idle: "sync.status.idle",
+  syncing: "sync.status.syncing",
+  error: "sync.status.error",
+};
 
 export function SettingsView({
   spans,
@@ -179,6 +229,7 @@ export function SettingsView({
   onDeleteAllData,
   autostart,
   focusWidget,
+  sync,
 }: SettingsViewProps) {
   const { t, language, setLanguage } = useI18n();
   const { theme, setTheme, highContrast, toggleHighContrast } = useAppTheme();
@@ -192,6 +243,71 @@ export function SettingsView({
   const deleteKeyword = language === "zh" ? "删除" : "DELETE";
   const deleteConfirmed =
     confirmText.trim().toLowerCase() === deleteKeyword.toLowerCase();
+
+  /*
+   * 同步 — the Supabase connection is baked into the build, so the section
+   * is one switch, one code, one button: flip it, copy the code onto the
+   * phone, done.
+   */
+  const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
+
+  /** Whether the code's copy button is still wearing its tick. */
+  const [codeCopied, setCodeCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+
+  /* A pending tick that outlives the page would set state on a gone
+     component — the settings page is unmounted every time the reader leaves
+     it, so the timer is cleared with it. */
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    },
+    []
+  );
+
+  const copyCode = useCallback(() => {
+    if (!sync.code || codeCopied) return;
+    void navigator.clipboard.writeText(sync.code).then(() => {
+      setCodeCopied(true);
+      toast.success(t("sync.codeCopied"));
+      copyTimerRef.current = window.setTimeout(() => {
+        copyTimerRef.current = null;
+        setCodeCopied(false);
+      }, COPY_FEEDBACK_MS);
+    });
+  }, [sync.code, codeCopied, t]);
+
+  /** The address is meant to be typed on a phone, so the click copies it
+      instead of opening it here — this is a desktop window, and the point is
+      to carry the address across, not to visit it. */
+  const copyMobileUrl = useCallback(() => {
+    void navigator.clipboard
+      .writeText(MOBILE_URL)
+      .then(() => toast.success(t("sync.mobileUrlCopied")));
+  }, [t]);
+
+  /** `14:32` — the clock of the last successful cycle, in the reader's own
+      locale; the seconds a cycle takes are not the interesting part. */
+  const lastSyncLabel = sync.lastSyncAt
+    ? t("sync.lastSync", {
+        time: new Intl.DateTimeFormat(LOCALES[language], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(sync.lastSyncAt),
+      })
+    : t("sync.never");
+
+  const syncStatusLabel = sync.error
+    ? t("sync.status.error", { error: sync.error })
+    : t(SYNC_STATUS_KEYS[sync.status]);
+
+  /**
+   * The mobile hint with its `{url}` token cut out, so the address can be
+   * rendered as a control rather than as more prose. Splitting into a list
+   * instead of destructuring two halves means a translation that drops the
+   * token still prints its whole sentence — just without the button.
+   */
+  const mobileHintParts = t("sync.mobileHint").split(MOBILE_URL_TOKEN);
 
   /** The export names a list on every row it writes; a deleted list's stretches
       go out as the empty name, which is what the unassigned bucket means. */
@@ -260,8 +376,12 @@ export function SettingsView({
                   </SelectContent>
                 </Select>
               </Row>
-              <Row label={t("appearance.highContrast")}>
+              <Row
+                label={t("appearance.highContrast")}
+                htmlFor="settings-high-contrast"
+              >
                 <Switch
+                  id="settings-high-contrast"
                   checked={highContrast}
                   onCheckedChange={toggleHighContrast}
                   aria-label={t("appearance.highContrast")}
@@ -276,7 +396,11 @@ export function SettingsView({
               {t("settings.sectionLanguage")}
             </SubsectionLabel>
             <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
-              <Row label={t("language.label")} htmlFor="settings-language">
+              <Row
+                label={t("language.label")}
+                icon={Languages}
+                htmlFor="settings-language"
+              >
                 <Select value={language} onValueChange={setLanguage}>
                   <SelectTrigger
                     id="settings-language"
@@ -306,9 +430,17 @@ export function SettingsView({
             </SubsectionLabel>
             <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
               <Row label={t("settings.sidebarHint")} />
+              {/* The label has to name the switch it points at: without the
+                  paired id a click on the row title does nothing, which is
+                  exactly what the rows further down already get right. */}
               {HIDEABLE_VIEWS.map((view) => (
-                <Row key={view} label={t(HIDEABLE_LABEL_KEYS[view])}>
+                <Row
+                  key={view}
+                  label={t(HIDEABLE_LABEL_KEYS[view])}
+                  htmlFor={`settings-sidebar-${view}`}
+                >
                   <Switch
+                    id={`settings-sidebar-${view}`}
                     checked={!settings.hiddenViews[view]}
                     onCheckedChange={(visible) => setViewVisible(view, visible)}
                     aria-label={t(HIDEABLE_LABEL_KEYS[view])}
@@ -483,6 +615,91 @@ export function SettingsView({
             </div>
           </section>
 
+          {/* ── 同步 ── The bridge to the phone: credentials, the sync code
+              the phone will be told, and the state of the engine right now. */}
+          <section className="mt-6">
+            <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
+              {t("settings.sectionSync")}
+            </SubsectionLabel>
+            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+              <Row
+                label={t("sync.enable")}
+                hint={t("sync.enableHint")}
+                htmlFor="sync-enabled"
+              >
+                <Switch
+                  id="sync-enabled"
+                  checked={sync.enabled}
+                  onCheckedChange={sync.setEnabled}
+                  aria-label={t("sync.enable")}
+                />
+              </Row>
+              <Row label={t("sync.code")} hint={t("sync.codeHint")}>
+                {sync.code ? (
+                  <div className="flex items-center gap-1">
+                    <code className="rounded bg-surface-muted px-2 py-1 font-mono text-xs tracking-wider">
+                      {formatCode(sync.code)}
+                    </code>
+                    {/* The tick is the whole acknowledgement: green ink, the
+                        same green the app uses for "this went well", and it
+                        stays put for `COPY_FEEDBACK_MS` while the button
+                        refuses a second press. Opacity is restored with it —
+                        a dimmed tick would read as "not available" rather
+                        than "done". */}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={copyCode}
+                      disabled={codeCopied}
+                      aria-label={t("sync.copyCode")}
+                      className={codeCopied ? "text-green-fg disabled:opacity-100" : undefined}
+                    >
+                      <Icon icon={codeCopied ? Check : Copy} size="sm" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setConfirmRegenOpen(true)}
+                      aria-label={t("sync.regenerate")}
+                    >
+                      <Icon icon={RefreshCw} size="sm" />
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="font-mono text-xs text-foreground-subtle">—</span>
+                )}
+              </Row>
+              {/* The engine's state, read-only: a cycle runs every 5 s and a
+                  failure backs off on its own, so there is nothing here for a
+                  person to press. */}
+              <Row
+                label={t("sync.status")}
+                hint={`${syncStatusLabel} · ${lastSyncLabel}`}
+              />
+            </div>
+            {/* The phone's half of the switch: where to open it. The address
+                is a button because the next step is to type it into a phone —
+                copying is the action worth offering, and it is the only one. */}
+            <p className="mt-2 px-1 text-xs leading-relaxed text-foreground-subtle">
+              {mobileHintParts.flatMap((part, i) =>
+                i < mobileHintParts.length - 1
+                  ? [
+                      part,
+                      <button
+                        key="url"
+                        type="button"
+                        onClick={copyMobileUrl}
+                        aria-label={t("sync.mobileUrlCopy")}
+                        className="cursor-pointer text-inherit underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {MOBILE_URL}
+                      </button>,
+                    ]
+                  : [part]
+              )}
+            </p>
+          </section>
+
           {/* Data — what the app does with what it holds. The CSV export moved
               here from the foot of the statistics page: "everything the log
               holds" is a whole-app concern, and one click now writes two files
@@ -525,7 +742,7 @@ export function SettingsView({
               {/* The policy row sits beside the export because both are about
                   what happens to the data the app is holding — one hands it
                   over to you, the other states that nobody else receives it. */}
-              <Row label={t("settings.privacy")} hint={t("settings.privacyHint")}>
+              <Row label={t("settings.privacy")}>
                 <Button variant="outline" size="sm" onClick={openPrivacy}>
                   <Icon icon={ExternalLink} size="sm" />
                   {t("settings.privacyAction")}
@@ -605,6 +822,29 @@ export function SettingsView({
               }}
             >
               {t("settings.deleteAllAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Regenerating the sync code orphans the cloud data under the old one
+          — nothing is migrated, every device needs retelling. A confirm the
+          colour of a warning is the least it deserves. */}
+      <AlertDialog
+        open={confirmRegenOpen}
+        onOpenChange={setConfirmRegenOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("sync.regenerateTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sync.regenerateBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction destructive onClick={() => sync.regenerateCode()}>
+              {t("sync.regenerate")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
