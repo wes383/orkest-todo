@@ -68,29 +68,37 @@ function clamp(value: number, lo: number, hi: number): number {
 }
 
 /**
- * The canonical privacy policy lives in the repository, not in the app: there
- * it is versioned with the code, so the text a given release shipped with can
- * still be read afterwards, and it is the one address a release page, a store
- * listing or a security questionnaire can all point at. In-app text has none of
- * those properties, and would drift out of step with the next release.
+ * The legal documents — the privacy policy and the terms of use — live in the
+ * repository, not in the app: there they are versioned with the code, so the
+ * text a given release shipped with can still be read afterwards, and each is
+ * the one address a release page, a store listing or a security questionnaire
+ * can point at. In-app text has none of those properties, and would drift out
+ * of step with the next release.
  *
- * So the app carries the pointer itself, and nothing beside it. The one-line
- * summary that used to sit under the label is gone: a paraphrase invites a
- * reader to stop at it instead of opening the document, and this one had
- * quietly gone false the day sync arrived — it still promised that nothing
- * ever left this machine.
+ * So the app carries the pointers themselves, and nothing beside them. The
+ * one-line summary that used to sit under the policy label is gone: a
+ * paraphrase invites a reader to stop at it instead of opening the document,
+ * and that one had quietly gone false the day sync arrived — it still promised
+ * that nothing ever left this machine.
+ *
+ * Both paths hang off one base so the two documents cannot drift onto
+ * different branches of the repository.
  */
-const PRIVACY_URL = "https://github.com/wes383/orkest-todo/blob/main/PRIVACY.md";
+const DOC_BASE_URL = "https://github.com/wes383/orkest-todo/blob/main";
+const PRIVACY_URL = `${DOC_BASE_URL}/PRIVACY.md`;
+const TERMS_URL = `${DOC_BASE_URL}/TERMS.md`;
 
 /**
- * The Chinese half of that document sits after the English one, so a Chinese
+ * The Chinese half of each document sits after the English one, so a Chinese
  * reader is sent straight to it instead of to a screen of English. The fragment
  * is percent-encoded by hand because the heading it points at is CJK, and a
  * heading that cannot be renamed without breaking this is worse than the
  * alternative: if the fragment ever misses, the reader simply lands at the top
  * of the document, which is the same place they would have landed anyway.
  */
-const PRIVACY_URL_ZH = `${PRIVACY_URL}#%E4%B8%AD%E6%96%87`;
+const ZH_ANCHOR = "#%E4%B8%AD%E6%96%87";
+const PRIVACY_URL_ZH = `${PRIVACY_URL}${ZH_ANCHOR}`;
+const TERMS_URL_ZH = `${TERMS_URL}${ZH_ANCHOR}`;
 
 /**
  * The phone page's address. It lives here, not inside the message table,
@@ -326,7 +334,7 @@ export function SettingsView({
   const desktop = isTauri();
 
   /**
-   * Open the policy in the system browser, not in this window.
+   * Open one of the documents above in the system browser, not in this window.
    *
    * A plain `<a href>` would navigate the webview itself: the app would be
    * replaced by a GitHub page and a running focus session would go with it —
@@ -336,14 +344,23 @@ export function SettingsView({
    * Outside the Tauri shell (the plain `pnpm dev` browser) there is no opener to
    * call, so that path falls back to a new tab.
    */
-  const openPrivacy = useCallback(() => {
-    const url = language === "zh" ? PRIVACY_URL_ZH : PRIVACY_URL;
+  const openExternal = useCallback((url: string) => {
     if (isTauri()) {
       void openUrl(url);
       return;
     }
     window.open(url, "_blank", "noopener,noreferrer");
-  }, [language]);
+  }, []);
+
+  /** Two documents, one behaviour: the reader is handed the half that is in
+      the language they are reading the app in. */
+  const openPrivacy = useCallback(() => {
+    openExternal(language === "zh" ? PRIVACY_URL_ZH : PRIVACY_URL);
+  }, [language, openExternal]);
+
+  const openTerms = useCallback(() => {
+    openExternal(language === "zh" ? TERMS_URL_ZH : TERMS_URL);
+  }, [language, openExternal]);
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground">
@@ -746,6 +763,17 @@ export function SettingsView({
                 <Button variant="outline" size="sm" onClick={openPrivacy}>
                   <Icon icon={ExternalLink} size="sm" />
                   {t("settings.privacyAction")}
+                </Button>
+              </Row>
+              {/* The terms follow the policy, in that order: these are the two
+                  documents that together are the app's contract with the
+                  reader — what is done with what they type, and what is asked
+                  of them in return — and the policy is the one people go
+                  looking for by name. */}
+              <Row label={t("settings.terms")}>
+                <Button variant="outline" size="sm" onClick={openTerms}>
+                  <Icon icon={ExternalLink} size="sm" />
+                  {t("settings.termsAction")}
                 </Button>
               </Row>
             </div>

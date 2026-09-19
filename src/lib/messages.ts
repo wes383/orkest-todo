@@ -187,6 +187,8 @@ const zh = {
   "settings.sectionData": "数据",
   "settings.privacy": "隐私政策",
   "settings.privacyAction": "查看",
+  "settings.terms": "用户协议",
+  "settings.termsAction": "查看",
   "settings.sectionDanger": "危险区",
   "settings.deleteAll": "删除所有数据",
   "settings.deleteAllHint":
@@ -672,6 +674,8 @@ const en: Record<MessageKey, Message> = {
   "settings.sectionData": "Data",
   "settings.privacy": "Privacy policy",
   "settings.privacyAction": "View",
+  "settings.terms": "Terms of use",
+  "settings.termsAction": "View",
   "settings.sectionDanger": "Danger zone",
   "settings.deleteAll": "Delete all data",
   "settings.deleteAllHint":
