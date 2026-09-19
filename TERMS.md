@@ -70,7 +70,7 @@ Versioned with the code (`Version 1.0`, effective date above); material changes 
 
 ## 中文
 
-**运营者与联系。** 运营者是 Orkest Todo 仓库的维护者——即发布构建并运行同步后端的一方。联系方式：https://github.com/wes383/orkest-todo/issues（请在彼处索取私密渠道，切勿公开同步码）。
+**运营者与联系。** 运营者是 Orkest Todo 仓库的维护者——即发布构建并运行同步后端的一方。联系方式：https://github.com/wes383/orkest-todo/issues （请在彼处索取私密渠道，切勿公开同步码）。
 
 ### 一、产品与接受
 
