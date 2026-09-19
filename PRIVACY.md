@@ -119,7 +119,7 @@ Questions, requests, complaints and rights requests: https://github.com/wes383/o
 
 ## 中文
 
-**控制者与联系。** 控制者即本应用的运营者：Orkest Todo 仓库的维护者，负责发布构建并运行同步后端。联系方式：https://github.com/wes383/orkest-todo/issues——请在彼处索取私密渠道，切勿公开同步码。
+**控制者与联系。** 控制者即本应用的运营者：Orkest Todo 仓库的维护者，负责发布构建并运行同步后端。联系方式：https://github.com/wes383/orkest-todo/issues ——请在彼处索取私密渠道，切勿公开同步码。
 
 ### 一、概述
 
@@ -192,7 +192,7 @@ Orkest Todo 是**本地优先**的待办与专注应用。任务、清单、设�
 
 **控制者：** 本应用的运营者，即 Orkest Todo 仓库的维护者（见本文文首）；在欧盟/英国无设立机构。
 
-数据保护联系：https://github.com/wes383/orkest-todo/issues（请在彼处索取私密渠道，勿公开同步码，也不要在公开 issue 中出现它）。
+数据保护联系：https://github.com/wes383/orkest-todo/issues （请在彼处索取私密渠道，勿公开同步码，也不要在公开 issue 中出现它）。
 
 未指定第 27 条代表及数据保护官（DPO）：服务端处理为选择性开启、仅约 2 天窗口、不含特殊类别数据。
 
@@ -226,4 +226,4 @@ Orkest Todo 是**本地优先**的待办与专注应用。任务、清单、设�
 
 ### 十五、联系方式
 
-问题、请求、投诉、权利行使：https://github.com/wes383/orkest-todo/issues。该 issue 区是公开的——若你的请求需指明某个同步窗口，请先在彼处索取私密渠道，切勿公开同步码。
+问题、请求、投诉、权利行使：https://github.com/wes383/orkest-todo/issues 。该 issue 区是公开的——若你的请求需指明某个同步窗口，请先在彼处索取私密渠道，切勿公开同步码。
