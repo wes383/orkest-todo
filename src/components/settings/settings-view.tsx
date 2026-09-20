@@ -480,7 +480,6 @@ export function SettingsView({
               {t("settings.sectionSidebar")}
             </SubsectionLabel>
             <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
-              <Row label={t("settings.sidebarHint")} />
               {/* The label has to name the switch it points at: without the
                   paired id a click on the row title does nothing, which is
                   exactly what the rows further down already get right. */}
@@ -498,6 +497,81 @@ export function SettingsView({
                   />
                 </Row>
               ))}
+            </div>
+            {/* The sentence says what the four switches above it do, so it
+                reads as a note under them — the same note style the phone
+                hint wears under 同步 — rather than as a full-strength row
+                opening the panel, which is what it was until then. */}
+            <p className="mt-2 px-1 text-xs leading-relaxed text-foreground-subtle">
+              {t("settings.sidebarHint")}
+            </p>
+          </section>
+
+          {/* Startup — the app's own life on this machine: whether it is there
+              before you ask it to be, what the ✕ does with it, and what leaving
+              does to a session still running. Placed above 专注: these three rows
+              are about the window itself, and every section under them is about
+              what the app records and holds.
+
+              The autostart row is the only one that edits something outside the
+              app: the login item the OS holds, which is also where its state is
+              read back from, so a refusal (Windows' 任务管理器 can veto an entry)
+              shows up here as a failure rather than as a switch that springs
+              back.
+
+              The other two keep their answers here, and the difference is worth
+              noticing between rows that look alike. The login item's truth lives
+              in the OS, so it cannot be duplicated; these two are both about
+              leaving, and leaving is carried out either by the webview (closing
+              the session — it holds the focus log) or by the window handler in
+              Rust (hiding or exiting). So one is asked for at the moment of the
+              quit and the other is pushed down in advance — a close request has
+              to be answered inside the event, where there is nobody to ask. See
+              `quit.ts` for both. */}
+          <section className="mt-6">
+            <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
+              {t("settings.sectionStartup")}
+            </SubsectionLabel>
+            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+              <Row
+                label={t("settings.autostart")}
+                hint={t(autostart.error ? "widget.error" : autostart.available ? "settings.autostartHint" : "settings.desktopOnly")}
+                htmlFor="settings-autostart"
+              >
+                <Switch
+                  id="settings-autostart"
+                  checked={autostart.enabled}
+                  disabled={!autostart.available || autostart.pending}
+                  onCheckedChange={(enabled) => { void autostart.setEnabled(enabled); }}
+                  aria-label={t("settings.autostart")}
+                />
+              </Row>
+              <Row
+                label={t("settings.closeToTray")}
+                hint={desktop ? undefined : t("settings.desktopOnly")}
+                htmlFor="settings-close-to-tray"
+              >
+                <Switch
+                  id="settings-close-to-tray"
+                  checked={settings.closeToTray}
+                  disabled={!desktop}
+                  onCheckedChange={setCloseToTray}
+                  aria-label={t("settings.closeToTray")}
+                />
+              </Row>
+              <Row
+                label={t("settings.quitStopsFocus")}
+                hint={desktop ? undefined : t("settings.desktopOnly")}
+                htmlFor="settings-quit-stops-focus"
+              >
+                <Switch
+                  id="settings-quit-stops-focus"
+                  checked={settings.quitStopsFocus}
+                  disabled={!desktop}
+                  onCheckedChange={setQuitStopsFocus}
+                  aria-label={t("settings.quitStopsFocus")}
+                />
+              </Row>
             </div>
           </section>
 
@@ -627,75 +701,6 @@ export function SettingsView({
                   disabled={!desktop}
                   onCheckedChange={setGlobalShortcuts}
                   aria-label={t("settings.globalShortcuts")}
-                />
-              </Row>
-            </div>
-          </section>
-
-          {/* Startup — the app's own life on this machine: whether it is there
-              before you ask it to be, what the ✕ does with it, and what leaving
-              does to a session still running. Placed just above 数据: the
-              sections above are about how the app behaves, the two below are
-              about what it holds and what it can destroy, and these three rows
-              are the last of the first kind.
-
-              The autostart row is the only one that edits something outside the
-              app: the login item the OS holds, which is also where its state is
-              read back from, so a refusal (Windows' 任务管理器 can veto an entry)
-              shows up here as a failure rather than as a switch that springs
-              back.
-
-              The other two keep their answers here, and the difference is worth
-              noticing between rows that look alike. The login item's truth lives
-              in the OS, so it cannot be duplicated; these two are both about
-              leaving, and leaving is carried out either by the webview (closing
-              the session — it holds the focus log) or by the window handler in
-              Rust (hiding or exiting). So one is asked for at the moment of the
-              quit and the other is pushed down in advance — a close request has
-              to be answered inside the event, where there is nobody to ask. See
-              `quit.ts` for both. */}
-          <section className="mt-6">
-            <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
-              {t("settings.sectionStartup")}
-            </SubsectionLabel>
-            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
-              <Row
-                label={t("settings.autostart")}
-                hint={t(autostart.error ? "widget.error" : autostart.available ? "settings.autostartHint" : "settings.desktopOnly")}
-                htmlFor="settings-autostart"
-              >
-                <Switch
-                  id="settings-autostart"
-                  checked={autostart.enabled}
-                  disabled={!autostart.available || autostart.pending}
-                  onCheckedChange={(enabled) => { void autostart.setEnabled(enabled); }}
-                  aria-label={t("settings.autostart")}
-                />
-              </Row>
-              <Row
-                label={t("settings.closeToTray")}
-                hint={desktop ? undefined : t("settings.desktopOnly")}
-                htmlFor="settings-close-to-tray"
-              >
-                <Switch
-                  id="settings-close-to-tray"
-                  checked={settings.closeToTray}
-                  disabled={!desktop}
-                  onCheckedChange={setCloseToTray}
-                  aria-label={t("settings.closeToTray")}
-                />
-              </Row>
-              <Row
-                label={t("settings.quitStopsFocus")}
-                hint={desktop ? undefined : t("settings.desktopOnly")}
-                htmlFor="settings-quit-stops-focus"
-              >
-                <Switch
-                  id="settings-quit-stops-focus"
-                  checked={settings.quitStopsFocus}
-                  disabled={!desktop}
-                  onCheckedChange={setQuitStopsFocus}
-                  aria-label={t("settings.quitStopsFocus")}
                 />
               </Row>
             </div>

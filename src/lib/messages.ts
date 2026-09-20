@@ -172,7 +172,7 @@ const zh = {
   "settings.sidebarHint": "选择在侧边栏中显示哪些视图。",
   "settings.sectionFocus": "专注",
   "settings.focusWidget": "桌面专注小组件",
-  "settings.focusWidgetHint": "始终置顶，可拖拽吸附到屏幕边缘；下次启动保留开关状态。",
+  "settings.focusWidgetHint": "始终置顶，可拖拽吸附到屏幕边缘。",
   "settings.desktopOnly": "仅桌面应用支持。",
   "settings.widgetOpacity": "小组件不透明度",
   "settings.widgetOpacityHint": "100% 时完全不透明，数值越低越透明。",
@@ -195,7 +195,7 @@ const zh = {
   "settings.maxSpanHint": "进行中的片段最多计此时长（小时）；已结束的片段不受影响。",
   "settings.globalShortcuts": "全局快捷键",
   "settings.globalShortcutsHint":
-    "{mod}F 开始或结束专注；关闭后快捷键即刻注销。",
+    "{mod}F 开始或结束专注。",
   "settings.sectionData": "数据",
   "settings.privacy": "隐私政策",
   "settings.privacyAction": "查看",
@@ -222,7 +222,7 @@ const zh = {
 
   /* ── Sync ────────────────────────────────────────────────── */
   "settings.sectionSync": "同步",
-  "sync.enable": "启用同步",
+  "sync.enable": "启用专注同步",
   "sync.enableHint":
     "把专注开关与最近两天的专注记录同步到云端，更早的历史不会上传；关闭同步会一并清除云端记录。",
   "sync.code": "同步码",
@@ -713,7 +713,7 @@ const en: Record<MessageKey, Message> = {
   "settings.sidebarHint": "Choose which views appear in the sidebar.",
   "settings.sectionFocus": "Focus",
   "settings.focusWidget": "Desktop focus widget",
-  "settings.focusWidgetHint": "Always on top. Drag to snap to screen edges. Visibility is remembered on restart.",
+  "settings.focusWidgetHint": "Always on top. Drag to snap to screen edges.",
   "settings.desktopOnly": "Available in the desktop app only.",
   "settings.widgetOpacity": "Widget opacity",
   "settings.widgetOpacityHint": "Fully opaque at 100%. Lower values make it more transparent.",
@@ -736,7 +736,7 @@ const en: Record<MessageKey, Message> = {
   "settings.maxSpanHint": "A span still running is credited up to this, in hours; finished spans are unaffected.",
   "settings.globalShortcuts": "Global shortcuts",
   "settings.globalShortcutsHint":
-    "{mod}F flips the focus switch; turning this off unregisters it immediately.",
+    "{mod}F flips the focus switch.",
   "settings.sectionData": "Data",
   "settings.privacy": "Privacy policy",
   "settings.privacyAction": "View",
@@ -761,7 +761,7 @@ const en: Record<MessageKey, Message> = {
 
   /* ── Sync ────────────────────────────────────────────────── */
   "settings.sectionSync": "Sync",
-  "sync.enable": "Enable sync",
+  "sync.enable": "Enable focus sync",
   "sync.enableHint":
     "Sync the focus switch and the last two days of focus records to the cloud. Older history is never uploaded; switching sync off clears the cloud as well.",
   "sync.code": "Sync code",
