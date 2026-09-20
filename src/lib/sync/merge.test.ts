@@ -5,11 +5,15 @@ import type { FocusSpan } from "@/lib/focus-spans";
 const LIMITS = { minMs: 60_000, maxMs: 8 * 3_600_000 };
 const NOW = 1_800_000_000_000;
 
-function span(startMin: number, endMin: number | null): FocusSpan {
+function span(
+  startMin: number,
+  endMin: number | null,
+  listId: string | null = null
+): FocusSpan {
   return {
     start: NOW - startMin * 60_000,
     end: endMin === null ? null : NOW - endMin * 60_000,
-    listId: null,
+    listId,
     minMs: LIMITS.minMs,
   };
 }
@@ -22,6 +26,29 @@ describe("mergeFocus", () => {
     expect(merged.spans).toHaveLength(1);
     expect(merged.spans[0].end).not.toBeNull();
     expect(merged.state).toBe("idle");
+  });
+
+  it("takes the remote's list on a running stretch the phone assigned", () => {
+    const local: FocusSpan[] = [span(60, null, null)];
+    const remote: FocusSpan[] = [span(60, null, "list-work")];
+    const merged = mergeFocus(local, remote, LIMITS, NOW);
+    expect(merged.spans[0].listId).toBe("list-work");
+    expect(merged.state).toBe("useful");
+  });
+
+  it("takes the remote's list when the phone reassigns it back to none", () => {
+    const local: FocusSpan[] = [span(60, null, "list-work")];
+    const remote: FocusSpan[] = [span(60, null, null)];
+    const merged = mergeFocus(local, remote, LIMITS, NOW);
+    expect(merged.spans[0].listId).toBeNull();
+  });
+
+  it("keeps the local list on a closed stretch the phone left open", () => {
+    const local: FocusSpan[] = [span(60, 30, "list-work")];
+    const remote: FocusSpan[] = [span(60, null, "list-home")];
+    const merged = mergeFocus(local, remote, LIMITS, NOW);
+    expect(merged.spans[0].listId).toBe("list-work");
+    expect(merged.spans[0].end).not.toBeNull();
   });
 
   it("closes an open stretch where a later one begins", () => {

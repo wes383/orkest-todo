@@ -12,7 +12,10 @@
  *  1. Same `start` on both sides: a closed record beats an open one (a close
  *     is newer information than an open), and otherwise the local record wins
  *     — the desktop is the keeper of the log, and its edits are the ones the
- *     phone never makes.
+ *     phone never makes. The one exception is a local record still *open*: it
+ *     yields to the remote, because the desktop never reassigns a session it
+ *     believes is running (its own switch pushes directly and skips this
+ *     merge), so a differing list on a running record is the phone's click.
  *  2. An open stretch followed by a later stretch: the later action is the
  *     deliberate one, so the older stretch closes where the newer began —
  *     continuous history, no double-counted time. If it was open for less
@@ -94,10 +97,11 @@ function unionSpans(local: FocusSpan[], remote: FocusSpan[]): FocusSpan[] {
   for (const span of remote) byStart.set(span.start, span);
   for (const span of local) {
     const existing = byStart.get(span.start);
-    // Keep the remote record only when it is closed and ours is open: that is
-    // the phone having stopped the session the desktop still believes is
-    // running. Every other disagreement resolves to the local record.
-    if (existing === undefined || !(existing.end !== null && span.end === null)) {
+    // A local record that is still open yields to the remote: the desktop
+    // never reassigns a session it believes is running, so a differing list
+    // there can only be the phone's. A closed local record keeps its own,
+    // which also settles the remote-open case by the close rule above.
+    if (existing === undefined || span.end !== null) {
       byStart.set(span.start, span);
     }
   }
