@@ -206,3 +206,13 @@ export function omit<T extends object, K extends keyof T>(
   keys.forEach((k) => delete result[k]);
   return result;
 }
+
+/* Platform naming */
+
+/**
+ * The modifier to name in shortcut hints: ⌘ on macOS, Ctrl everywhere else.
+ *
+ * Only the labels needed this — every handler already read `ctrlKey || metaKey`,
+ * so ⌘ has worked since the first shortcut was bound.
+ */
+export const MOD_KEY = /Macintosh|Mac OS X/.test(navigator.userAgent) ? "⌘" : "Ctrl";

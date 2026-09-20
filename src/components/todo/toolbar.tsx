@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { SubsectionLabel } from "@/components/ui/section";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { cn, MOD_KEY } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/messages";
 import { viewImpliedStatus, type Filters } from "@/lib/selectors";
@@ -192,7 +192,7 @@ export function Toolbar({
         size="sm"
         className="min-w-[180px] flex-1"
         leadingIcon={<Icon icon={Search} size="sm" />}
-        trailingIcon={<Kbd className="text-[10px]">Ctrl K</Kbd>}
+        trailingIcon={<Kbd className="text-[10px]">{MOD_KEY} K</Kbd>}
       >
         <Input
           ref={searchRef}

@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Hint } from "@/components/ui/section";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, MOD_KEY } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import {
   parseQuickInput,
@@ -266,7 +266,7 @@ export function QuickAdd({
             ·
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Kbd className="text-[10px]">Ctrl</Kbd>
+            <Kbd className="text-[10px]">{MOD_KEY}</Kbd>
             <Kbd className="text-[10px]">N</Kbd>
             {t("quickAdd.fullEditorHint")}
           </span>

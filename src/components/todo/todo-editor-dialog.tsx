@@ -32,7 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { addDays, fromISODate, todayISO, toISODate } from "@/lib/date";
 import { useI18n, type I18nValue } from "@/lib/i18n";
 import { weekdayName } from "@/lib/recur";
-import { cn, uid } from "@/lib/utils";
+import { cn, MOD_KEY, uid } from "@/lib/utils";
 import type { TodoDraft } from "@/lib/store";
 import {
   PRIORITY_META,
@@ -615,7 +615,7 @@ export function TodoEditorDialog({
         <DialogFooter>
           <span className="mr-auto flex items-center gap-1.5 text-xs text-foreground-subtle">
             {t("editor.hintPress")}
-            <Kbd className="text-[10px]">Ctrl</Kbd>
+            <Kbd className="text-[10px]">{MOD_KEY}</Kbd>
             <Kbd className="text-[10px]">Enter</Kbd>
             {t("editor.hintSave")}
           </span>
