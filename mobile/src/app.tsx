@@ -1070,8 +1070,15 @@ function Setup({
         <input
           id="setup-code"
           type="text"
-          inputMode="numeric"
+          /* The alphabetic keyboard, deliberately. The code is 24 characters
+             out of `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (`CODE_ALPHABET` in the
+             desktop's `sync/config.ts`) — 24 of those 32 are letters, so the
+             numeric pad an `inputMode="numeric"` asks for can type only a
+             third of a code. Capitalisation is not a question the keyboard
+             needs to ask either: `normalizeCode` folds the answer. */
+          inputMode="text"
           autoCapitalize="characters"
+          autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
           className="input"
