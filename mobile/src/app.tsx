@@ -311,9 +311,10 @@ const MENU_MARGIN = 8;
  * It is handed to `document.body` rather than parked under the trigger: the
  * list panel above it clips its own corners with `overflow: hidden`, which
  * would crop a menu drawn inside it, and a fixed layer also escapes the page's
- * stacking context. The one deliberate difference from the desktop is the
- * height of a row — 44px here, the smallest comfortable tap, against its 36px
- * for a pointer.
+ * stacking context. Two deliberate differences from the desktop: the height of
+ * a row — 44px here, the smallest comfortable tap, against its 36px for a
+ * pointer — and the menu's width, which the desktop leaves to its content but
+ * this one never lets fall below the trigger's (see the layout effect).
  */
 function Dropdown({
   id,
@@ -331,7 +332,11 @@ function Dropdown({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const [active, setActive] = useState(0);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -341,7 +346,30 @@ function Dropdown({
 
   /* Place the menu against the trigger — and above it when the viewport below
      is too short. Measured in a layout effect, so the correction lands before
-     the first paint instead of as a visible jump. */
+     the first paint instead of as a visible jump.
+
+     The width is the wider of two things, each clamped to the viewport first
+     (a menu wider than the phone would hang off the edge):
+
+     · what the labels need. The style below asks for `max-content` on this
+       pass, and `.is-measuring` holds the labels on one line while it is
+       taken — see the note on that class: `overflow-wrap: anywhere` on
+       `.menu-label` otherwise collapses the contribution to the longest word,
+       so the measurement says "English" and the rendered menu breaks before
+       "(US)".
+     · the trigger's own width, as a floor. A popover narrower than the box it
+       dropped out of reads as a second, unrelated control — and this one is a
+       full-width field, not the desktop's content-sized trigger, so there is
+       nothing else holding the two together.
+
+     Rounded up, because this number is handed back as a `width`: the measured
+     value is fractional, and half a pixel short of what a label needs is
+     enough to break that label at its space.
+
+     It is one number rather than a `width` plus a `min-width`: `min-width`
+     outranks `width`, so a floor written there has to be guarded against the
+     viewport clamp, and a floor that is already inside the computed value
+     needs no guard. */
   useLayoutEffect(() => {
     if (!open) {
       setPos(null);
@@ -351,13 +379,21 @@ function Dropdown({
     const menu = menuRef.current;
     if (trigger === null || menu === null) return;
     const box = trigger.getBoundingClientRect();
+    const room = window.innerWidth - 2 * MENU_MARGIN;
+    const width = Math.max(
+      Math.min(Math.ceil(menu.getBoundingClientRect().width), room),
+      Math.min(box.width, room)
+    );
     const height = menu.offsetHeight;
     const below = window.innerHeight - box.bottom - MENU_GAP - MENU_MARGIN;
     const flip = height > below && box.top - MENU_GAP - MENU_MARGIN > below;
     setPos({
       top: flip ? box.top - MENU_GAP - height : box.bottom + MENU_GAP,
-      left: Math.max(MENU_MARGIN, Math.min(box.left, window.innerWidth - box.width - MENU_MARGIN)),
-      width: box.width,
+      left: Math.max(
+        MENU_MARGIN,
+        Math.min(box.left, window.innerWidth - width - MENU_MARGIN)
+      ),
+      width,
     });
   }, [open, choices.length]);
 
@@ -462,11 +498,15 @@ function Dropdown({
             role="listbox"
             aria-labelledby={id}
             tabIndex={-1}
-            className="menu"
+            className={"menu" + (pos === null ? " is-measuring" : "")}
             style={{
               top: pos?.top ?? 0,
               left: pos?.left ?? 0,
-              width: pos?.width ?? 0,
+              /* `max-content` while measuring (see the layout effect and the
+                 `.is-measuring` rule): the natural width, so the labels are
+                 not broken up by a box that was sized for the trigger instead
+                 of for them. */
+              width: pos === null ? "max-content" : pos.width,
               visibility: pos === null ? "hidden" : "visible",
             }}
             onKeyDown={onMenuKeyDown}

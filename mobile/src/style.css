@@ -498,6 +498,16 @@ body {
   transition: background-color var(--duration-base) var(--ease-out);
 }
 
+/* A hair of air between rows, where the desktop's list is flush. Deliberate
+   divergence: a 12px pointer reads the rounded highlight as one row among
+   others, but at 44px of thumb-sized row the few pixels of separation are what
+   keep two stacked options from reading as a single block. Not a `gap` — the
+   menu scrolls, and a flex column would let its rows shrink to fit the
+   max-height instead of overflowing into the scrollbar. */
+.menu-item + .menu-item {
+  margin-top: 4px;
+}
+
 /* The desktop's row is one highlight shared by the pointer and the keyboard
    (`data-[highlighted]`), so the two readings of it here are one value — and
    the hover half is kept to pointers, where on touch it would only stick to
@@ -532,6 +542,18 @@ body {
 .menu-label {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* One line, while the menu's width is being measured and only then.
+   `overflow-wrap: anywhere` is not only a line-breaking rule: it collapses the
+   label's max-content contribution to its longest unbreakable run, which is
+   why measuring the menu with `width: max-content` said a 57px "English" where
+   the row needed 90px of "English (US)" — the menu came out narrower than its
+   own label and the row broke before "(US)". Holding the label on one line for
+   the measurement is what makes the number honest; drop it again afterwards,
+   because a name too long for the phone must still wrap. */
+.menu.is-measuring .menu-label {
+  white-space: nowrap;
 }
 
 .hint {
