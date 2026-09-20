@@ -129,6 +129,8 @@ const zh = {
   "sidebar.deleteLastTitle": "无法删除「{name}」",
   "sidebar.deleteLastBody":
     "这是最后一个清单，至少要保留一个。可以先新建一个清单，再来删除它。",
+  "sidebar.collapse": "收起侧边栏",
+  "sidebar.expand": "展开侧边栏",
 
   /* ── Lists ───────────────────────────────────────────────── */
   "list.untitled": "未命名清单",
@@ -667,6 +669,8 @@ const en: Record<MessageKey, Message> = {
   "sidebar.deleteLastTitle": "Can’t delete “{name}”",
   "sidebar.deleteLastBody":
     "This is the last list, and at least one has to stay. Create another list first, then delete this one.",
+  "sidebar.collapse": "Collapse sidebar",
+  "sidebar.expand": "Expand sidebar",
 
   /* ── Lists ───────────────────────────────────────────────── */
   "list.untitled": "Untitled list",
