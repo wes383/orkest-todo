@@ -563,6 +563,18 @@ body {
   color: var(--foreground-subtle);
 }
 
+/* The one line on the page that is a rule rather than a field's aside: the
+   cloud is a channel, not the archive, so it has to be asked often enough.
+   Plain ink a step stronger than `.hint` — worth reading, not worth alarm. */
+.note {
+  margin: 0;
+  /* Enough to break away from the hint above and stay with the field below. */
+  margin-top: 4px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--foreground-muted);
+}
+
 /* ── The action ─────────────────────────────────────────────────────── */
 
 .action {
