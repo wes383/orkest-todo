@@ -44,6 +44,7 @@ import { Tag } from "@/components/ui/tag";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { addDays, dueLabel, dueTone, relativeCreated, todayISO } from "@/lib/date";
 import { recurLabel } from "@/lib/recur";
+import { LinkText } from "@/components/todo/link-text";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -441,9 +442,10 @@ export function TodoItem({
           {expanded && hasDetail && (
             <div className="animate-fade-in border-t border-border py-4 pl-[3.25rem] pr-5">
               {todo.notes && (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground-muted">
-                  {todo.notes}
-                </p>
+                <LinkText
+                  text={todo.notes}
+                  className="text-sm leading-relaxed text-foreground-muted"
+                />
               )}
 
               {todo.subtasks.length > 0 && (

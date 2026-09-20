@@ -45,7 +45,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Timer } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Timer } from "lucide-react";
+import { AddSpanDialog } from "@/components/focus/add-span-dialog";
 import {
   Select,
   SelectContent,
@@ -104,6 +105,7 @@ import {
   type Milestone,
   type MilestoneGroup,
 } from "@/lib/focus-achievements";
+import type { AddRefusal } from "@/lib/focus-store";
 import { LOCALES, type Language } from "@/lib/messages";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -441,6 +443,10 @@ export interface FocusStatsProps {
   /** File the stretch at `index` under a list — or under nothing, which is
       `null`. Open to any row at any time, running or long finished. */
   onSetList: (index: number, listId: string | null) => void;
+  /** Write a stretch by hand — the log's 补记. Answers with the reason it was
+      refused, or `null` when it was kept, so the dialog can print the log's own
+      objection instead of guessing at one. */
+  onAddManual: (start: number, end: number, listId: string | null) => AddRefusal | null;
 }
 
 export function FocusStats({
@@ -451,8 +457,10 @@ export function FocusStats({
   onSplit,
   onDelete,
   onSetList,
+  onAddManual,
 }: FocusStatsProps) {
   const { t, language, locale } = useI18n();
+  const [addOpen, setAddOpen] = useState(false);
 
   // Today is what a log is opened to check, so the averages start there instead
   // of on the week.
@@ -1349,6 +1357,17 @@ export function FocusStats({
                     action={
                       view === null ? undefined : (
                         <div className="flex items-center gap-1.5">
+                          {/* 补记 — a stretch the switch never saw, written by
+                              hand into the day being viewed. Sits with the day
+                              controls because it writes into that day. */}
+                          <button
+                            type="button"
+                            onClick={() => setAddOpen(true)}
+                            aria-label={t("focusLog.add")}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-foreground-muted transition-colors duration-base ease-out hover:bg-hover-bg hover:text-foreground"
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => stepDay(-1)}
@@ -1860,6 +1879,13 @@ export function FocusStats({
                 </div>
               </div>
       </div>
+
+      <AddSpanDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        lists={lists}
+        onAdd={onAddManual}
+      />
     </main>
   );
 }

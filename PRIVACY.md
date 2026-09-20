@@ -16,7 +16,7 @@ Applies to: the Orkest Todo desktop app (Tauri 2 + React, Windows / macOS / Linu
 
 - Tasks (title, notes, due date, priority, tags, subtasks, repeat rules, stars): key `orkest-todo.v1`. Never synced, never uploaded.
 - Full focus log and switch: keys `orkest-todo.focus.log.v1` / `orkest-todo.focus.state`; ids of milestones already celebrated: `orkest-achievements.v1`. Only the last approximately two days of the log are mirrored when sync is on.
-- Settings (hidden views, min/max focus rules, widget opacity, tray/quit behaviour), interface language and colour theme: `orkest-settings.v1`, `orkest-todo.language`, and `theme` (written by the theme library the app embeds). Only min/max rules leave the device when sync is on (see section 4).
+- Settings (hidden views, min/max focus rules, widget opacity, tray/quit behaviour, global shortcuts switch, shortcut-hint visibility), interface language and colour theme: `orkest-settings.v1`, `orkest-todo.language`, and `theme` (written by the theme library the app embeds). Only min/max rules leave the device when sync is on (see section 4).
 - Sync on/off and sync code: `orkest-sync.v1` (desktop), `orkest-mobile.v1` (phone); on the phone also the interface language `orkest-mobile.lang` and the list chosen for the session `orkest-mobile.list.v1`. The code travels only as the `x-sync-code` request header.
 - CSV exports: written by you to a folder you choose; shared only if you share the file.
 
@@ -133,7 +133,7 @@ Orkest Todo 是**本地优先**的待办与专注应用。任务、清单、设�
 
 - 任务（标题、备注、截止日、优先级、标签、子任务、重复规则、星标）：`orkest-todo.v1`。永不同步、不上传。
 - 完整专注记录与开关：`orkest-todo.focus.log.v1` / `orkest-todo.focus.state`；已庆祝里程碑的 id：`orkest-achievements.v1`。开启同步后仅镜像最近约 2 天。
-- 设置（隐藏视图、专注最短/最长规则、悬浮窗透明度、托盘/退出行为）、界面语言与配色主题：`orkest-settings.v1`、`orkest-todo.language`，以及 `theme`（由应用内嵌的主题库写入）。仅最短/最长规则在同步开启后离开本机（见第四条）。
+- 设置（隐藏视图、专注最短/最长规则、悬浮窗透明度、托盘/退出行为、全局快捷键开关、快捷键提示开关）、界面语言与配色主题：`orkest-settings.v1`、`orkest-todo.language`，以及 `theme`（由应用内嵌的主题库写入）。仅最短/最长规则在同步开启后离开本机（见第四条）。
 - 同步开关与同步码：桌面 `orkest-sync.v1`、手机 `orkest-mobile.v1`；手机另有界面语言 `orkest-mobile.lang` 与当次所选清单 `orkest-mobile.list.v1`。同步码仅以 `x-sync-code` 请求头传给所连 Supabase 项目。
 - CSV 导出：由你选择目录保存；仅当你自行分享该文件才会外传。
 

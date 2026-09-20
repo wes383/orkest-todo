@@ -124,6 +124,49 @@ function saveConfig(config: MobileConfig): void {
   }
 }
 
+/**
+ * The code a pairing QR carried in.
+ *
+ * The desktop's settings page draws a QR holding this page's address with the
+ * code in the query, so scanning it with a phone camera opens the page already
+ * knowing what to connect to. The code is read once and then wiped from the
+ * address bar: the stored config is what the page uses from then on, and a
+ * code left in the URL would be re-applied on every later reload — including
+ * after the reader deliberately switched to another one.
+ *
+ * A code in the URL wins over the stored one. Scanning is an explicit "pair me
+ * with this desk", which is a newer intention than whatever the tab held.
+ */
+function takeCodeFromUrl(): string | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("code") ?? new URLSearchParams(window.location.hash.slice(1)).get("code");
+    if (raw === null) return null;
+    params.delete("code");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}`
+    );
+    const code = normalizeCode(raw);
+    return code.length === 24 ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the page opens with: a scanned code first, the last one second. */
+function initialConfig(): MobileConfig | null {
+  const scanned = takeCodeFromUrl();
+  if (scanned !== null) {
+    const config = { code: scanned };
+    saveConfig(config);
+    return config;
+  }
+  return loadConfig();
+}
+
 /** The alphabet the desktop generates codes from, mirrored here so a typed
     code can be cleaned the same way it was written: upper-cased, stripped of
     everything that is not a letter or a digit. */
@@ -151,10 +194,11 @@ interface Choice {
 
 /** The two languages, each named in itself, so the menu is usable from inside
     the language you are trying to leave — the desktop's own rule for this
-    control. */
+    control, down to the written form on each half (`LANGUAGE_LABELS` in
+    `src/lib/messages.ts` writes them the same way). */
 const LANGUAGE_CHOICES: Choice[] = [
-  { value: "zh", label: "中文" },
-  { value: "en", label: "English" },
+  { value: "zh", label: "简体中文" },
+  { value: "en", label: "English (US)" },
 ];
 
 const STRINGS = {
@@ -469,7 +513,7 @@ export function App() {
   const [lang, setLang] = useState<Lang>(detectLang);
   const strings = STRINGS[lang];
 
-  const [config, setConfig] = useState<MobileConfig | null>(loadConfig);
+  const [config, setConfig] = useState<MobileConfig | null>(initialConfig);
   /** The setup screen also opens on demand, pre-filled, to change anything. */
   const [setupOpen, setSetupOpen] = useState(config === null);
 

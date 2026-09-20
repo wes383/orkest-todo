@@ -50,6 +50,16 @@ export interface AppSettings {
       unlike `quitStopsFocus` this one is mirrored down to the native side on
       every change; see `useCloseToTray` in `quit.ts`. */
   closeToTray: boolean;
+  /** Whether the OS-wide shortcuts are live. They are registered in Rust
+      (see `global-shortcut.ts`); this is only the answer the settings page
+      shows and the bridge reads. */
+  globalShortcuts: boolean;
+  /** `true` = the interface stops spelling out its chords: every keycap and
+      every "press … to …" line is gone. Presentation only — no binding is
+      unregistered and no field loses its behaviour, which is why this one never
+      leaves the webview. Off by default: the hints are how the app teaches its
+      own shortcuts, so doing without them is a choice its reader makes. */
+  hideShortcutHints: boolean;
 }
 
 const STORAGE_KEY = "orkest-settings.v1";
@@ -77,6 +87,8 @@ const DEFAULTS: AppSettings = {
   },
   minSpanMinutes: DEFAULT_MIN_SPAN_MINUTES,
   maxSpanHours: 8,
+  globalShortcuts: true,
+  hideShortcutHints: false,
   widgetOpacity: DEFAULT_WIDGET_OPACITY,
   // Off: quitting has always meant the session keeps running, and a rule that
   // ends work on its own is one a reader should turn on deliberately.
@@ -131,6 +143,11 @@ function load(): AppSettings {
       ),
       quitStopsFocus: bool(parsed.quitStopsFocus, DEFAULTS.quitStopsFocus),
       closeToTray: bool(parsed.closeToTray, DEFAULTS.closeToTray),
+      globalShortcuts: bool(parsed.globalShortcuts, DEFAULTS.globalShortcuts),
+      hideShortcutHints: bool(
+        parsed.hideShortcutHints,
+        DEFAULTS.hideShortcutHints
+      ),
     };
   } catch {
     return DEFAULTS;
@@ -204,6 +221,14 @@ export function useSettings() {
     setSettings((s) => ({ ...s, closeToTray }));
   }, []);
 
+  const setGlobalShortcuts = useCallback((globalShortcuts: boolean) => {
+    setSettings((s) => ({ ...s, globalShortcuts }));
+  }, []);
+
+  const setHideShortcutHints = useCallback((hideShortcutHints: boolean) => {
+    setSettings((s) => ({ ...s, hideShortcutHints }));
+  }, []);
+
   return {
     settings,
     setViewVisible,
@@ -211,5 +236,7 @@ export function useSettings() {
     setWidgetOpacity,
     setQuitStopsFocus,
     setCloseToTray,
+    setGlobalShortcuts,
+    setHideShortcutHints,
   };
 }

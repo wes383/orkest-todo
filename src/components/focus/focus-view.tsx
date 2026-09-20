@@ -245,6 +245,9 @@ export interface FocusViewProps {
   /** The statistics live on a page of their own now; the rail is one of the
       doors into it. */
   onOpenStats: () => void;
+  /** Whether the foot of the screen spells out the arrows. See
+      `AppSettings.hideShortcutHints`. */
+  hideShortcutHints: boolean;
 }
 
 export function FocusView({
@@ -252,6 +255,7 @@ export function FocusView({
   lists,
   defaultListId,
   onOpenStats,
+  hideShortcutHints,
 }: FocusViewProps) {
   const { t } = useI18n();
   const { state, commit: moveSwitch } = store;
@@ -481,8 +485,10 @@ export function FocusView({
           </div>
         </div>
 
+        {/* The element stays even when the hint goes: its `pb-8` is what keeps
+            the switch off the band below. */}
         <p className="shrink-0 px-6 pb-8 text-center text-xs text-foreground-faint">
-          {t("focus.keys")}
+          {!hideShortcutHints && t("focus.keys")}
         </p>
       </div>
 

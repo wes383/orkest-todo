@@ -35,6 +35,16 @@ export interface DialogContentProps
   closeLabel?: string;
 }
 
+/**
+ * `relative` on the content is load-bearing, not decoration.
+ *
+ * The close button below is `absolute`, and with no positioned ancestor it
+ * resolves against the `fixed inset-0` wrapper — the viewport — so the ✕ lands
+ * in the window's top-right corner instead of on the dialog. What hides that is
+ * `animate-fade-slide-in`: a transform makes the content a containing block, so
+ * for the 200 ms the animation runs the button is where it belongs, and the
+ * moment the animation ends it jumps to the corner.
+ */
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
@@ -47,7 +57,7 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "w-full max-w-lg bg-surface border border-border rounded-2xl shadow-dialog animate-fade-slide-in p-0 focus:outline-none",
+          "relative w-full max-w-lg bg-surface border border-border rounded-2xl shadow-dialog animate-fade-slide-in p-0 focus:outline-none",
           className
         )}
         {...props}

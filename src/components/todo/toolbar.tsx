@@ -3,7 +3,7 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input, InputWithIcon } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
+import { KbdChord } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -90,6 +90,9 @@ export interface ToolbarProps {
   filters: Filters;
   tags: string[];
   activeFilterCount: number;
+  /** Whether the search field prints the chord that reaches it. See
+      `AppSettings.hideShortcutHints` — presentation only, nothing is unbound. */
+  hideShortcutHints: boolean;
   searchRef: React.RefObject<HTMLInputElement | null>;
   onChange: (patch: Partial<Filters>) => void;
   onReset: () => void;
@@ -132,6 +135,7 @@ export function Toolbar({
   filters,
   tags,
   activeFilterCount,
+  hideShortcutHints,
   searchRef,
   onChange,
   onReset,
@@ -188,15 +192,29 @@ export function Toolbar({
         </Tabs>
       )}
 
+      {/*
+       * The chord is written as separate keycaps (`Ctrl` `F`), and the field
+       * pads for the wider slot: one cap reading "Ctrl F" was narrower than two
+       * caps plus their gap, so the tail of a long query could slide underneath
+       * the hint. `pr-20` is that gap plus the caps, measured at the widest the
+       * two platforms print ("Ctrl"+"F", "⌘"+"F").
+       *
+       * 隐藏快捷键提示 takes the caps and the padding they measured together:
+       * leaving the pad behind would reserve a slot for nothing, which is the
+       * one thing a setting about reclaiming space must not do.
+       */}
       <InputWithIcon
         size="sm"
         className="min-w-[180px] flex-1"
         leadingIcon={<Icon icon={Search} size="sm" />}
-        trailingIcon={<Kbd className="text-[10px]">{MOD_KEY} K</Kbd>}
+        trailingIcon={
+          hideShortcutHints ? undefined : <KbdChord keys={[MOD_KEY, "F"]} />
+        }
       >
         <Input
           ref={searchRef}
           size="sm"
+          className={hideShortcutHints ? undefined : "pr-20"}
           value={filters.query}
           placeholder={t("toolbar.searchPlaceholder")}
           aria-label={t("toolbar.searchAria")}

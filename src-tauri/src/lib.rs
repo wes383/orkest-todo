@@ -753,6 +753,56 @@ fn set_close_to_tray(
   Ok(())
 }
 
+/**
+ * The OS-wide chord, registered and unregistered from here — never held open
+ * behind the reader's back.
+ *
+ * It lands on the same [`TrayCommand`] channel the native menu uses, so a
+ * keyboard shortcut and a menu click are one behaviour with two doors. The
+ * settings page mirrors its switch down on boot and on every change; `false`
+ * unregisters it, so the chord is dead the moment the setting says so.
+ *
+ * Note what is *not* here: the old `ctrl+alt+n`. 新建任务 still has two doors
+ * of its own — the tray menu's row, which raises the window the way this chord
+ * did (see [`build_tray`]), and the window's own Ctrl/⌘+N. A chord that raises
+ * a window is the shape most likely to be taken already by something else on
+ * the machine, and dropping it left the one chord that is genuinely useful
+ * from behind the window: the focus switch.
+ *
+ * A chord another app already holds fails to register; the error travels back
+ * to the caller rather than being swallowed, because a shortcut that silently
+ * does nothing reads as a broken app.
+ */
+#[tauri::command]
+fn set_global_shortcuts(
+  window: tauri::WebviewWindow,
+  app: AppHandle,
+  enabled: bool,
+) -> Result<(), String> {
+  if window.label() != MAIN_WINDOW {
+    return Err("Only the main window may own the global shortcuts".into());
+  }
+  use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+  if !enabled {
+    app
+      .global_shortcut()
+      .unregister_all()
+      .map_err(|e| e.to_string())?;
+    return Ok(());
+  }
+
+  app
+    .global_shortcut()
+    .on_shortcut("ctrl+alt+f", |app, _shortcut, event| {
+      if event.state() == ShortcutState::Pressed {
+        emit_command(app, TrayCommand::ToggleFocus);
+      }
+    })
+    .map_err(|e| e.to_string())?;
+  Ok(())
+}
+
 fn open_view(app: &AppHandle, view: &'static str) {
   reveal_main_window(app);
   emit_command(app, TrayCommand::OpenView { view });
@@ -1127,10 +1177,11 @@ pub fn run() {
 
   builder
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .invoke_handler(tauri::generate_handler![
       greet, sync_tray, save_csv_files, get_focus_widget_enabled,
       set_focus_widget_enabled, focus_widget_layout, open_main_window, quit_app,
-      set_close_to_tray,
+      set_close_to_tray, set_global_shortcuts,
     ])
     .setup(|app| {
       let config_path = app.path().app_config_dir()?.join("focus-widget.json");
@@ -1326,7 +1377,7 @@ mod tests {
       serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
     assert_eq!(value["capabilities"][0]["permissions"], serde_json::json!([
       "core:default", "core:window:allow-set-theme", "opener:default",
-      "autostart:default",
+      "autostart:default", "global-shortcut:default",
     ]));
     assert_eq!(value["capabilities"][1]["permissions"], serde_json::json!([
       "core:default", "core:window:allow-set-position",
@@ -1360,6 +1411,23 @@ mod tests {
   fn close_to_tray_command_name_matches_the_frontend_caller() {
     let source = include_str!("../../src/lib/quit.ts");
     assert!(source.contains("\"set_close_to_tray\""));
+  }
+
+  /// The one chord the settings page promises — `ctrl+alt+f` flips the focus
+  /// switch — pinned here the way the close behaviour is above: a rename costs
+  /// nothing at build time and shows up only as a chord that stops matching
+  /// its hint.
+  ///
+  /// Only ever asserted *forward*. A "this chord must not exist" line would
+  /// read the same characters a comment explaining the removal does, and would
+  /// fail on prose rather than on behaviour.
+  #[test]
+  fn global_shortcut_names_match_the_frontend_hint() {
+    let frontend = include_str!("../../src/lib/global-shortcut.ts");
+    assert!(frontend.contains("Ctrl+Alt+F"));
+    let backend = include_str!("lib.rs");
+    assert!(backend.contains("\"ctrl+alt+f\""));
+    assert!(backend.contains("set_global_shortcuts"));
   }
 
   /// The shipped answer, and it has to stay `false` to match

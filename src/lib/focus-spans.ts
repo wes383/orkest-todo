@@ -280,6 +280,21 @@ export function cappedEnd(span: FocusSpan, fallback: number): number {
   return span.end ?? Math.min(fallback, span.start + maxUsefulMs());
 }
 
+/** Whether a stretch covering `[start, end)` would claim time `span` already
+    holds — the one invariant the log keeps: every hour is on the record once.
+    Stretches that merely touch (`end === span.start`) do not conflict, because
+    back-to-back sessions are how an ordinary day goes.
+
+    A stretch still running has no end recorded, so anything reaching past its
+    start conflicts with it. That is the same reading the merge makes when it
+    closes an open stretch at its successor's start, and it is why the answer
+    cannot depend on `cappedEnd`: the cap bounds what the running stretch will
+    be *credited*, not what it has already claimed. */
+export function overlaps(span: FocusSpan, start: number, end: number): boolean {
+  const stop = span.end ?? Number.POSITIVE_INFINITY;
+  return start < stop && end > span.start;
+}
+
 /** Whether a stretch is work *as far as one day is concerned*.
 
     A stretch is cut at every midnight it crosses, and the floor is then applied

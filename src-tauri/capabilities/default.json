@@ -9,7 +9,8 @@
         "core:default",
         "core:window:allow-set-theme",
         "opener:default",
-        "autostart:default"
+        "autostart:default",
+        "global-shortcut:default"
       ]
     },
     {

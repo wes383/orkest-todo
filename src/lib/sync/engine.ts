@@ -66,7 +66,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FocusSpan } from "@/lib/focus-spans";
 import type { FocusState, FocusStore } from "@/lib/focus-store";
 import { spanLimits, type AppSettings } from "@/lib/settings";
@@ -79,6 +79,25 @@ import {
   type SyncConfig,
 } from "@/lib/sync/config";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/sync/credentials";
+
+/**
+ * The one place a Supabase client is minted.
+ *
+ * Imported dynamically rather than at the top of the module: `@supabase/*` is
+ * the heaviest dependency of the whole app, and sync-off users — the default —
+ * should never download it. The import resolves exactly once per client that
+ * needs one (creation, or the purge on disable), and `import type` keeps the
+ * type-only uses free.
+ */
+async function makeClient(code: string): Promise<SupabaseClient> {
+  const { createClient } = await import("@supabase/supabase-js");
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { "x-sync-code": code } },
+    // No auth is used — the code in the header is the whole identity — so
+    // the client is told not to keep a session it would never have.
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 /** What a row of `focus_spans` looks like over the wire. */
 interface RemoteSpan {
@@ -192,10 +211,7 @@ function spansEqual(a: FocusSpan[], b: FocusSpan[]): boolean {
  */
 async function purgeDataSpace(code: string): Promise<void> {
   if (code === "") return;
-  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { "x-sync-code": code } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const client = await makeClient(code);
   // Twice, a second apart: a cycle already in flight when the switch was
   // flipped can land its own rows just after the first delete has run. The
   // second pass is what makes "nothing left behind" true rather than likely.
@@ -343,26 +359,28 @@ export function useFocusSync(
     }
     // A build made without `.env.local` gets here with empty strings, which
     // `createClient` refuses; leaving the client unset is quieter than an
-    // effect that throws on a misbuild.
-    try {
-      setClient(
-        createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          global: { headers: { "x-sync-code": clientCode } },
-          // No auth is used — the code in the header is the whole identity —
-          // so the client is told not to keep a session it would never have.
-          auth: { persistSession: false, autoRefreshToken: false },
-        })
-      );
-      remoteSpansRef.current = null;
-      remoteListsRef.current = null;
-      pushedStateRef.current = null;
-      pushedRulesRef.current = null;
-      cyclesSinceFullRef.current = 0;
-      failuresRef.current = 0;
-      retryAfterRef.current = 0;
-    } catch {
-      setClient(null);
-    }
+    // effect that throws on a misbuild. Unmounting in the gap (strict-mode's
+    // double effect, a hot reload) drops the late arrival rather than
+    // installing a client for a code that is already gone.
+    let disposed = false;
+    void makeClient(clientCode)
+      .then((client) => {
+        if (disposed) return;
+        setClient(client);
+        remoteSpansRef.current = null;
+        remoteListsRef.current = null;
+        pushedStateRef.current = null;
+        pushedRulesRef.current = null;
+        cyclesSinceFullRef.current = 0;
+        failuresRef.current = 0;
+        retryAfterRef.current = 0;
+      })
+      .catch(() => {
+        if (!disposed) setClient(null);
+      });
+    return () => {
+      disposed = true;
+    };
   }, [clientCode]);
 
   /** One pass of the protocol. Throws on failure; the callers decide how a

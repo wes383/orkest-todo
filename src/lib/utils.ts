@@ -210,9 +210,20 @@ export function omit<T extends object, K extends keyof T>(
 /* Platform naming */
 
 /**
- * The modifier to name in shortcut hints: ⌘ on macOS, Ctrl everywhere else.
- *
- * Only the labels needed this — every handler already read `ctrlKey || metaKey`,
- * so ⌘ has worked since the first shortcut was bound.
+ * Whether this window is on macOS — asked only to choose how a key is *named*
+ * in a hint, never what it does. Every handler reads `ctrlKey || metaKey`, so
+ * ⌘ has worked since the first shortcut was bound.
  */
-export const MOD_KEY = /Macintosh|Mac OS X/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+const IS_MAC = /Macintosh|Mac OS X/.test(navigator.userAgent);
+
+/** The modifier to name in shortcut hints: ⌘ on macOS, Ctrl everywhere else. */
+export const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
+
+/**
+ * Shift as this platform prints it: `⇧` on macOS, `Shift` everywhere else.
+ *
+ * The same reasoning the global chord hint follows for ⌃⌥: a keycap naming a
+ * glyph the keyboard does not carry is worse than a longer word. Apple prints
+ * ⇧ on the key itself; Windows and Linux print Shift.
+ */
+export const SHIFT_KEY = IS_MAC ? "⇧" : "Shift";

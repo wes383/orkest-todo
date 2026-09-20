@@ -20,6 +20,21 @@ import "@fontsource-variable/noto-sans-sc";
 import { App } from "./app";
 import "./style.css";
 
+/*
+ * The service worker is registered from the built page only: in `vite dev` a
+ * worker would cache modules Vite is still rewriting, which turns every hot
+ * reload into a mystery. Registration is also a pure nicety — a browser that
+ * refuses it (private mode, an http origin that is not localhost) still gets
+ * the whole page.
+ */
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
+      /* no offline shell — the page itself is unaffected */
+    });
+  });
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

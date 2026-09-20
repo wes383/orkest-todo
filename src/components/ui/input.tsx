@@ -84,10 +84,16 @@ const InputWithIcon = React.forwardRef<HTMLDivElement, InputWithIconProps>(
     const input = React.Children.only(
       children
     ) as React.ReactElement<React.InputHTMLAttributes<HTMLInputElement>>;
+    /*
+     * The icon paddings come first so the field's own className can override
+     * them — `cn` merges left to right. A trailing slot narrower than one icon
+     * is what `pr-11` was sized for; a slot holding a chord of keycaps is
+     * wider than that, and the text would otherwise run underneath it.
+     */
     const inputClassName = cn(
-      input.props.className,
       leadingIcon && "pl-11",
-      trailingIcon && "pr-11"
+      trailingIcon && "pr-11",
+      input.props.className
     );
     const cloned = React.cloneElement(input, { className: inputClassName });
 

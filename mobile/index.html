@@ -8,6 +8,17 @@
     />
     <meta name="theme-color" content="#fcfbfa" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#101010" media="(prefers-color-scheme: dark)" />
+    <!--
+      Installable: the page is looked at in bursts, from a phone, and a home
+      screen icon is the difference between opening it and finding it. Paths
+      stay relative, like the build's `base`, so the folder still drops onto
+      any static host or subdirectory unchanged.
+    -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="128x128" href="./icons/icon-128.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-512.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Orkest" />
     <title>Orkest Focus</title>
   </head>
   <body>

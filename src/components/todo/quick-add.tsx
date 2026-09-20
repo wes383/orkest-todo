@@ -11,10 +11,10 @@ import { CalendarPlus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
+import { Kbd, KbdChord } from "@/components/ui/kbd";
 import { Hint } from "@/components/ui/section";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn, MOD_KEY } from "@/lib/utils";
+import { cn, MOD_KEY, SHIFT_KEY } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import {
   parseQuickInput,
@@ -87,6 +87,11 @@ export interface QuickAddProps {
   /** Parsed draft — title, tags and priority already pulled out of the syntax. */
   onAdd: (draft: QuickInput) => void;
   onOpenFullEditor: () => void;
+  /** Whether the field prints the chords around it: the one that lands the
+      caret here, and the one that hands the draft to the full editor. See
+      `AppSettings.hideShortcutHints` — the tokens below (`#标签`, `p1`) are not
+      keys and stay. */
+  hideShortcutHints: boolean;
   /**
    * React 19 hands `ref` down as a plain prop, so there is no `forwardRef`
    * wrapper here.
@@ -115,6 +120,7 @@ export function QuickAdd({
   listName,
   onAdd,
   onOpenFullEditor,
+  hideShortcutHints,
   ref,
 }: QuickAddProps) {
   const { t } = useI18n();
@@ -197,7 +203,11 @@ export function QuickAdd({
             ref={inputRef}
             size="sm"
             value={value}
-            placeholder={t("quickAdd.placeholder")}
+            placeholder={t(
+              hideShortcutHints
+                ? "quickAdd.placeholderNoKeys"
+                : "quickAdd.placeholder"
+            )}
             aria-label={t("quickAdd.aria")}
             // The whole line is a title, so it stops where a title stops. The
             // field itself is transparent and the mirror above paints the
@@ -220,6 +230,21 @@ export function QuickAdd({
           />
         </div>
 
+        {/*
+         * The chord that lands the caret in this field. It rides the row itself
+         * rather than the hint line below, because it is not a hint about what
+         * the field does — it is how you get here in the first place. The hints
+         * below are progressive disclosure (they appear on focus), and that
+         * cannot apply to this one: saying "press this to focus" after the field
+         * already has focus is the one moment the sentence is useless.
+         *
+         * 隐藏快捷键提示 takes it away like any other chord; the row then ends at
+         * the 详细 button, which leads to the same place.
+         */}
+        {!hideShortcutHints && (
+          <KbdChord keys={[MOD_KEY, SHIFT_KEY, "N"]} className="shrink-0" />
+        )}
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -241,7 +266,8 @@ export function QuickAdd({
        * focus. As a permanently visible row this was three clauses of standing
        * explanation under an empty input, which made it the noisiest element on
        * the screen; none of it is needed to use the field, since the
-       * placeholder already says Enter saves.
+       * placeholder already says Enter saves (and says only what to type once
+       * hints are hidden).
        */}
       {focused && (
         <Hint className="animate-fade-in pl-1">
@@ -262,14 +288,19 @@ export function QuickAdd({
             <Kbd className="text-[10px]">p4</Kbd>
             {t("quickAdd.priorityHint")}
           </span>
-          <span aria-hidden="true" className="text-foreground-faint">
-            ·
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Kbd className="text-[10px]">{MOD_KEY}</Kbd>
-            <Kbd className="text-[10px]">N</Kbd>
-            {t("quickAdd.fullEditorHint")}
-          </span>
+          {/* Clause and separator leave together: a trailing `·` with nothing
+              after it reads as a typo. */}
+          {!hideShortcutHints && (
+            <>
+              <span aria-hidden="true" className="text-foreground-faint">
+                ·
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <KbdChord keys={[MOD_KEY, "N"]} />
+                {t("quickAdd.fullEditorHint")}
+              </span>
+            </>
+          )}
         </Hint>
       )}
     </div>

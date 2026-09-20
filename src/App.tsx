@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import {
   ClipboardList,
   Plus,
@@ -29,18 +29,37 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { FocusView } from "@/components/focus/focus-view";
-import { FocusStats } from "@/components/focus/focus-stats";
-import { SettingsView } from "@/components/settings/settings-view";
+import { CommandPalette, PALETTE_ICONS, type PaletteCommand } from "@/components/command-palette";
+import { VirtualTodoList } from "@/components/todo/virtual-todo-list";
+import { useAppTheme } from "@/components/theme-provider";
+import { useGlobalShortcuts } from "@/lib/global-shortcut";
+/*
+ * Code-split the screens that are not the task list: they are heavy (charts,
+ * settings forms) and most sessions never open them. The main bundle keeps the
+ * tasks screen; each lazy chunk arrives the first time its screen is picked.
+ */
+const FocusStats = lazy(() =>
+  import("@/components/focus/focus-stats").then((m) => ({ default: m.FocusStats }))
+);
+const SettingsView = lazy(() =>
+  import("@/components/settings/settings-view").then((m) => ({ default: m.SettingsView }))
+);
+/*
+ * The editor brings the date/time pickers and react-day-picker with it —
+ * none of which the task list needs. It renders only while open, so the chunk
+ * loads on the first open and never before.
+ */
+const TodoEditorDialog = lazy(() =>
+  import("@/components/todo/todo-editor-dialog").then((m) => ({
+    default: m.TodoEditorDialog,
+  }))
+);
 import { Sidebar } from "@/components/todo/sidebar";
 import { Toolbar } from "@/components/todo/toolbar";
 import { BlankAreaMenu } from "@/components/todo/blank-area-menu";
 import { QuickAdd, type QuickAddHandle } from "@/components/todo/quick-add";
 import { TodoItem } from "@/components/todo/todo-item";
-import {
-  TodoEditorDialog,
-} from "@/components/todo/todo-editor-dialog";
 import { ListDialog } from "@/components/todo/list-dialog";
-import { cn } from "@/lib/utils";
 import { useBrowserGuards } from "@/lib/browser-guards";
 import type { QuickInput } from "@/lib/quick-input";
 import {
@@ -88,7 +107,7 @@ const VIEW_TITLE_KEYS: Record<ViewId, MessageKey> = {
 };
 
 export default function App() {
-  const { t, language } = useI18n();
+  const { t, language, setLanguage } = useI18n();
   // The webview stays a desktop window: no context menu, no browser chords,
   // no zoom. Runs before anything else below can mount.
   useBrowserGuards();
@@ -121,6 +140,8 @@ export default function App() {
     setWidgetOpacity,
     setQuitStopsFocus,
     setCloseToTray,
+    setGlobalShortcuts,
+    setHideShortcutHints,
   } = useSettings();
 
   /*
@@ -149,6 +170,11 @@ export default function App() {
   const [listDialogOpen, setListDialogOpen] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // The OS-wide chord, live only while the setting says so — the registration
+  // is a claim on the OS, so it must die the moment the switch flips off.
+  useGlobalShortcuts(settings.globalShortcuts);
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const quickAddRef = useRef<QuickAddHandle | null>(null);
@@ -166,6 +192,25 @@ export default function App() {
       quickAddRef.current?.focus();
     }
   }, [quickAddFocusTicket]);
+
+  /*
+   * 快速添加 — the inline field, reached the same way from all three doors: the
+   * palette, the tray's 新建任务 and ⌃⇧N.
+   *
+   * The screen goes back to the tasks first even when it is already there: the
+   * field lives on that screen alone, and bumping the ticket *is* the focus
+   * request — read by the effect above, which runs after the commit that
+   * mounted the field and left the ref pointing at it. A branch that skipped
+   * the bump and called `quickAddRef.current?.focus()` directly would only be
+   * right on the one screen it was written for.
+   *
+   * Stable on purpose: the key listener below is attached once, so anything it
+   * read out of state would be the state of the render that attached it.
+   */
+  const focusQuickAdd = useCallback(() => {
+    setScreen("todos");
+    setQuickAddFocusTicket((n) => n + 1);
+  }, []);
 
   /* ── Derived data ────────────────────────────────────────── */
 
@@ -329,22 +374,17 @@ export default function App() {
     (command: TrayCommand) => {
       if (command.action === "new-task") {
         /*
-         * The inline field, not the full editor. It is the app's fast path — the
-         * same surface Ctrl+N leads to and the same one the empty state points
-         * at — so a task caught from the tray lands identically to one caught
-         * from the window.
+         * The inline field, not the full editor: the tray's 新建任务 row is the
+         * fast path, the same surface the empty state points at and the same
+         * one ⌃⇧N leads to, so a task caught from the tray lands the way a task
+         * caught from the keyboard does. Ctrl+N opens the full editor instead —
+         * the one door that asks for more than a title.
          *
-         * The field only exists on the tasks screen. From settings, the focus
-         * switch or the statistics there is nothing to focus yet, so the screen
-         * goes back to the tasks first and the focus rides the ticket — fired
-         * once the switch has rendered and the ref is alive again.
+         * Nothing here raises the window: the tray's row calls
+         * `reveal_main_window` in Rust before emitting this, and the global
+         * chord that used to arrive from anywhere is gone.
          */
-        if (screen !== "todos") {
-          setScreen("todos");
-          setQuickAddFocusTicket((n) => n + 1);
-          return;
-        }
-        quickAddRef.current?.focus();
+        focusQuickAdd();
         return;
       }
 
@@ -363,7 +403,7 @@ export default function App() {
 
       selectView(command.view);
     },
-    [selectView, focus.commit, focus.state, lastFocusListId, screen]
+    [selectView, focus.commit, focus.state, lastFocusListId, focusQuickAdd]
   );
 
   useTrayBridge(counts, language, focus.state === "useful", handleTrayCommand);
@@ -568,19 +608,95 @@ export default function App() {
     [filters.listId, lists, removeList, focus, t]
   );
 
+  /* ── Command palette ─────────────────────────────────────── */
+
+  const { setTheme } = useAppTheme();
+
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const go = (next: Screen) => () => setScreen(next);
+    const view = (v: ViewId) => () => selectView(v);
+    return [
+      {
+        id: "new-task",
+        labelKey: "cmd.newTask",
+        icon: PALETTE_ICONS.plus,
+        run: focusQuickAdd,
+      },
+      {
+        id: "new-task-full",
+        labelKey: "cmd.newTaskFull",
+        icon: PALETTE_ICONS.plus,
+        run: openCreate,
+      },
+      {
+        id: "toggle-focus",
+        labelKey: "cmd.toggleFocus",
+        icon: PALETTE_ICONS.timer,
+        run: () =>
+          focus.commit(focus.state === "useful" ? "idle" : "useful", lastFocusListId),
+      },
+      { id: "go-focus", labelKey: "cmd.screen.focus", icon: PALETTE_ICONS.timer, run: go("focus") },
+      { id: "go-stats", labelKey: "cmd.screen.stats", icon: PALETTE_ICONS.stats, run: go("stats") },
+      { id: "go-settings", labelKey: "cmd.screen.settings", icon: PALETTE_ICONS.settings, run: go("settings") },
+      { id: "view-all", labelKey: "cmd.view.all", icon: PALETTE_ICONS.list, run: view("all") },
+      { id: "view-today", labelKey: "cmd.view.today", icon: PALETTE_ICONS.list, run: view("today") },
+      { id: "view-upcoming", labelKey: "cmd.view.upcoming", icon: PALETTE_ICONS.list, run: view("upcoming") },
+      { id: "view-overdue", labelKey: "cmd.view.overdue", icon: PALETTE_ICONS.list, run: view("overdue") },
+      { id: "view-starred", labelKey: "cmd.view.starred", icon: PALETTE_ICONS.list, run: view("starred") },
+      { id: "view-completed", labelKey: "cmd.view.completed", icon: PALETTE_ICONS.list, run: view("completed") },
+      { id: "theme-light", labelKey: "cmd.theme.light", icon: PALETTE_ICONS.sun, run: () => setTheme("light") },
+      { id: "theme-dark", labelKey: "cmd.theme.dark", icon: PALETTE_ICONS.moon, run: () => setTheme("dark") },
+      { id: "theme-system", labelKey: "cmd.theme.system", icon: PALETTE_ICONS.system, run: () => setTheme("system") },
+      {
+        id: "language",
+        labelKey: "cmd.language",
+        icon: PALETTE_ICONS.language,
+        run: () => setLanguage(language === "zh" ? "en" : "zh"),
+      },
+      {
+        id: "clear-completed",
+        labelKey: "cmd.clearCompleted",
+        icon: PALETTE_ICONS.trash,
+        run: () => setConfirmClearOpen(true),
+      },
+    ];
+  }, [selectView, openCreate, focus, lastFocusListId, setTheme, setLanguage, language, focusQuickAdd]);
+
   /* ── Keyboard shortcuts ──────────────────────────────────── */
 
+  /*
+   * The window's own chords, on one listener attached once. Every branch
+   * reaches for a ref, a setter or `focusQuickAdd` — all of them stable — so
+   * nothing here can go stale between renders.
+   */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
 
-      if (mod && e.key.toLowerCase() === "k") {
+      if (mod && key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+        return;
+      }
+      // The search field itself, not the palette. Ctrl+F is the chord a browser
+      // would spend on its own find bar, and `browser-guards.ts` is what stops
+      // that bar from opening on the way here.
+      if (mod && key === "f") {
         e.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
         return;
       }
-      if (mod && e.key.toLowerCase() === "n") {
+      // Two doors to a task, and they are not the same door: Ctrl+Shift+N lands
+      // in the inline field the way the tray's 新建任务 does, Ctrl+N opens the
+      // full editor.
+      if (mod && e.shiftKey && key === "n") {
+        e.preventDefault();
+        focusQuickAdd();
+        return;
+      }
+      if (mod && key === "n") {
         e.preventDefault();
         setEditing(null);
         setEditorOpen(true);
@@ -593,7 +709,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [focusQuickAdd]);
 
   /* ── Render ──────────────────────────────────────────────── */
 
@@ -660,9 +776,10 @@ export default function App() {
         />
 
         {/*
-         * The main area is one of two screens, never both. The focus screen is
-         * not a layer over the tasks — it replaces them — which is what keeps
-         * the switch the only thing in view while a session is running.
+         * The main area shows one screen at a time, never layered: each is a
+         * place, and picking another is how you leave. The focus screen in
+         * particular replaces the tasks rather than covering them, which is
+         * what keeps the switch the only thing in view while a session runs.
          */}
         {screen === "focus" ? (
           <FocusView
@@ -670,36 +787,44 @@ export default function App() {
             lists={lists}
             defaultListId={lastFocusListId}
             onOpenStats={() => setScreen("stats")}
+            hideShortcutHints={settings.hideShortcutHints}
           />
         ) : screen === "stats" ? (
-          <FocusStats
-            spans={focus.spans}
-            todos={todos}
-            lists={lists}
-            onReschedule={focus.reschedule}
-            onSplit={focus.split}
-            onDelete={focus.remove}
-            onSetList={focus.setList}
-          />
+          <Suspense fallback={<main className="h-full min-w-0 flex-1 bg-background" />}>
+            <FocusStats
+              spans={focus.spans}
+              todos={todos}
+              lists={lists}
+              onReschedule={focus.reschedule}
+              onSplit={focus.split}
+              onDelete={focus.remove}
+              onSetList={focus.setList}
+              onAddManual={focus.addManual}
+            />
+          </Suspense>
         ) : screen === "settings" ? (
-          <SettingsView
-            spans={focus.spans}
-            todos={todos}
-            lists={lists}
-            settings={settings}
-            setViewVisible={setViewVisible}
-            setSpanLimits={setSpanLimits}
-            setWidgetOpacity={setWidgetOpacity}
-            setQuitStopsFocus={setQuitStopsFocus}
-            setCloseToTray={setCloseToTray}
-            autostart={autostart}
-            focusWidget={focusWidget}
-            sync={sync}
-            onDeleteAllData={() => {
-              store.clearAll();
-              focus.clearAll();
-            }}
-          />
+          <Suspense fallback={<main className="h-full min-w-0 flex-1 bg-background" />}>
+            <SettingsView
+              spans={focus.spans}
+              todos={todos}
+              lists={lists}
+              settings={settings}
+              setViewVisible={setViewVisible}
+              setSpanLimits={setSpanLimits}
+              setWidgetOpacity={setWidgetOpacity}
+              setQuitStopsFocus={setQuitStopsFocus}
+              setCloseToTray={setCloseToTray}
+              setGlobalShortcuts={setGlobalShortcuts}
+              setHideShortcutHints={setHideShortcutHints}
+              autostart={autostart}
+              focusWidget={focusWidget}
+              sync={sync}
+              onDeleteAllData={() => {
+                store.clearAll();
+                focus.clearAll();
+              }}
+            />
+          </Suspense>
         ) : (
         <main className="flex min-w-0 flex-1 flex-col">
           {/*
@@ -737,6 +862,7 @@ export default function App() {
                 filters={filters}
                 tags={tags}
                 activeFilterCount={activeFilterCount}
+                hideShortcutHints={settings.hideShortcutHints}
                 searchRef={searchRef}
                 onChange={patchFilters}
                 onReset={resetFilters}
@@ -758,63 +884,17 @@ export default function App() {
                 listName={targetListName}
                 onAdd={handleQuickAdd}
                 onOpenFullEditor={openCreate}
+                hideShortcutHints={settings.hideShortcutHints}
               />
 
               {visible.length === 0 ? (
                 emptyState
-              ) : grouped ? (
-                <div className="flex flex-col gap-6">
-                  {grouped.map((group) => (
-                    <section key={group.key} className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2 px-1">
-                        <h2
-                          className={cn(
-                            "text-[13px] font-medium tracking-wide",
-                            group.key === "overdue"
-                              ? "text-red"
-                              : "text-foreground-muted"
-                          )}
-                        >
-                          {group.label}
-                        </h2>
-                        <span className="font-mono text-[11px] tabular-nums text-foreground-faint">
-                          {group.todos.length}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {group.todos.map((todo) => (
-                          <TodoItem
-                            key={todo.id}
-                            todo={todo}
-                            list={listById.get(todo.listId)}
-                            showList={showRowList}
-                            onToggle={() => handleToggle(todo.id)}
-                            onStar={() => toggleStar(todo.id)}
-                            onToggleSubtask={(subId) =>
-                              handleToggleSubtask(todo.id, subId)
-                            }
-                            onEdit={() => openEdit(todo)}
-                            onDuplicate={() => handleDuplicate(todo)}
-                            onDelete={() => handleDelete(todo)}
-                            onSetPriority={(p) =>
-                              updateTodo(todo.id, { priority: p })
-                            }
-                            onSetDue={(d) =>
-  // Clearing the date un-anchors any repeat, keeping the invariant
-  // "recurring ⇒ has a due date" true everywhere, not just in the editor.
-  updateTodo(todo.id, d ? { dueDate: d } : { dueDate: null, recur: null })
-}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
               ) : (
-                <div className="flex flex-col gap-2">
-                  {visible.map((todo) => (
+                <VirtualTodoList
+                  items={visible}
+                  groups={grouped}
+                  renderTodo={(todo) => (
                     <TodoItem
-                      key={todo.id}
                       todo={todo}
                       list={listById.get(todo.listId)}
                       showList={showRowList}
@@ -828,13 +908,13 @@ export default function App() {
                       onDelete={() => handleDelete(todo)}
                       onSetPriority={(p) => updateTodo(todo.id, { priority: p })}
                       onSetDue={(d) =>
-  // Clearing the date un-anchors any repeat, keeping the invariant
-  // "recurring ⇒ has a due date" true everywhere, not just in the editor.
-  updateTodo(todo.id, d ? { dueDate: d } : { dueDate: null, recur: null })
-}
+                        // Clearing the date un-anchors any repeat, keeping the invariant
+                        // "recurring ⇒ has a due date" true everywhere, not just in the editor.
+                        updateTodo(todo.id, d ? { dueDate: d } : { dueDate: null, recur: null })
+                      }
                     />
-                  ))}
-                </div>
+                  )}
+                />
               )}
 
               {/*
@@ -883,14 +963,30 @@ export default function App() {
         )}
       </div>
 
-      {/* Dialogs */}
-      <TodoEditorDialog
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
-        todo={editing}
-        lists={lists}
-        defaultListId={editing?.listId ?? targetListId}
-        onSubmit={handleEditorSubmit}
+      {/* Dialogs — the palette and the list dialog are always in the tree
+          (their mounts must be instant); the task editor loads on its first
+          open. Rendering a lazy component behind `editorOpen` delays the
+          import until the first time the dialog has a reason to exist. */}
+      {editorOpen && (
+        <Suspense fallback={null}>
+          <TodoEditorDialog
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+            todo={editing}
+            lists={lists}
+            defaultListId={editing?.listId ?? targetListId}
+            hideShortcutHints={settings.hideShortcutHints}
+            onSubmit={handleEditorSubmit}
+          />
+        </Suspense>
+      )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        commands={paletteCommands}
+        onQuickAdd={handleQuickAdd}
+        hideShortcutHints={settings.hideShortcutHints}
       />
 
       <ListDialog

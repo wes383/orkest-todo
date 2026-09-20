@@ -15,8 +15,12 @@ import { useEffect } from "react";
  *
  * Two things stay deliberately out of the way:
  *
- *  - the app's own Ctrl+K (search) and Ctrl+N (new task), which the keyboard
- *    effect in `App.tsx` owns — this guard must never eat them;
+ *  - the app's own chords, which the keyboard effect in `App.tsx` owns: Ctrl+K
+ *    for the palette, Ctrl+F for the search field, Ctrl+N and Ctrl+Shift+N for
+ *    the two ways to write a task. `preventDefault` is not `stopPropagation`,
+ *    so the `f` in the set below is not a fight over the same chord — the guard
+ *    is what keeps the engine's find bar from opening, and the app's own
+ *    handler runs either way;
  *  - everything without a modifier, and the clipboard and editing chords
  *    (Ctrl+C/X/V/A/Z/…), which are how text is written into this app.
  */
@@ -35,7 +39,9 @@ const BLOCKED_FUNCTION_KEYS = new Set([
 
 /** Browser chrome that answers to Ctrl + a letter. Notably absent: `k` and
     `n` — the app binds those itself — and the editing letters, which are how
-    the user types. */
+    the user types. `f` stays *in* the set even though the app wants that chord
+    too: the engine's find bar is precisely what must not open, and a
+    `preventDefault` here never reached the app's own handler. */
 const BLOCKED_CONTROL_KEYS = new Set(["f", "g", "h", "o", "p", "s", "t", "u", "w"]);
 
 /** Zoom resets and steps, with or without Shift. `0` returns to 100%. */

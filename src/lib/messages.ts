@@ -25,16 +25,22 @@ export const LANGUAGES: Language[] = ["zh", "en"];
  * a language picker. Someone who has landed in a language they cannot read must
  * still be able to recognise their own in the list, and a translated label
  * ("Chinese", "中文") cannot promise that from the wrong side.
+ *
+ * Both halves carry the written form the copy is in. A bare "English" or "中文"
+ * would promise a neutrality this table does not have: the copy under `en` is
+ * American English, and the copy under `zh` is 简体中文. (See `LOCALES` below for
+ * why the tags themselves still stay as short as they are.)
  */
 export const LANGUAGE_LABELS: Record<Language, string> = {
-  zh: "中文",
-  en: "English",
+  zh: "简体中文",
+  en: "English (US)",
 };
 
 /**
  * BCP-47 tags for `Intl` and for `<html lang>`.
  *
- * Bare `en` rather than `en-US`: nothing in the app is US-specific (dates are
+ * Bare `en` rather than `en-US`: the labels above say which written form the
+ * copy uses, but nothing the formatter produces is US-specific (dates are
  * `Sep 20`, not `9/20`), and the shorter tag is what the calendar and date
  * picker match on with `startsWith("en")`.
  */
@@ -50,6 +56,7 @@ const zh = {
   /* ── Shared ──────────────────────────────────────────────── */
   "common.all": "全部",
   "common.cancel": "取消",
+  "common.close": "关闭",
   "common.save": "保存",
   "common.undo": "撤销",
   "common.clear": "清除",
@@ -184,6 +191,9 @@ const zh = {
   "settings.minSpanHint": "关闭时短于此时长（分钟）的片段会被丢弃；已记录的专注不受影响。",
   "settings.maxSpan": "进行中片段的上限",
   "settings.maxSpanHint": "进行中的片段最多计此时长（小时）；已结束的片段不受影响。",
+  "settings.globalShortcuts": "全局快捷键",
+  "settings.globalShortcutsHint":
+    "{mod}F 开始或结束专注；关闭后快捷键即刻注销。",
   "settings.sectionData": "数据",
   "settings.privacy": "隐私政策",
   "settings.privacyAction": "查看",
@@ -200,15 +210,20 @@ const zh = {
   "settings.deleteAllType": "输入 {keyword} 以确认",
   "settings.deleteAllDone": "已删除所有数据",
   "settings.theme": "主题",
+  "settings.hideShortcutHints": "隐藏快捷键提示",
+  "settings.sectionAbout": "关于",
+  "settings.version": "版本",
+  /* A bare build number, the same in every language — hence the identical
+     value in the English block below. The `v` is part of the copy, not a
+     prefix the code adds: it is how a version is written down. */
+  "settings.versionHint": "v{version}",
 
   /* ── Sync ────────────────────────────────────────────────── */
   "settings.sectionSync": "同步",
   "sync.enable": "启用同步",
   "sync.enableHint":
-    "把专注开关与最近两天的专注记录同步到云端，手机端输入同步码即可远程查看与切换。更早的历史只留在本机，不会上传；关闭同步会一并清除云端记录。",
+    "把专注开关与最近两天的专注记录同步到云端，更早的历史不会上传；关闭同步会一并清除云端记录。",
   "sync.code": "同步码",
-  "sync.codeHint":
-    "首次启用时自动生成；手机端输入同一同步码即可看到这台电脑的专注会话。",
   "sync.copyCode": "复制",
   "sync.codeCopied": "同步码已复制",
   "sync.regenerate": "重新生成",
@@ -222,6 +237,8 @@ const zh = {
   "sync.status.error": "同步出错：{error}",
   "sync.lastSync": "上次同步：{time}",
   "sync.never": "尚未同步",
+  "sync.qr": "扫码配对",
+  "sync.qrHint": "用手机相机扫码，打开链接即自动填入同步码。",
   "sync.mobileHint":
     "用浏览器打开 {url}，输入上面的同步码，即可远程查看与切换专注。",
   "sync.mobileUrlCopy": "复制手机端网址",
@@ -261,6 +278,7 @@ const zh = {
 
   /* ── Quick add ───────────────────────────────────────────── */
   "quickAdd.placeholder": "添加任务，按 Enter 保存…",
+  "quickAdd.placeholderNoKeys": "添加任务…",
   "quickAdd.aria": "快速添加任务",
   "quickAdd.openEditor": "打开详细编辑",
   "quickAdd.detailButton": "详细",
@@ -510,15 +528,55 @@ const zh = {
   "stats.tasks.total": "累计完成",
   "stats.tasks.count": "{n} 个",
   "stats.tasks.doneCount": "{n} 个任务",
-  "stats.tasks.byList": "各清单完成情况",
+  "stats.tasks.byList": "按清单统计完成率",
   "stats.tasks.ofCount": "{done} / {total}",
   "stats.tasks.pct": "{pct}%",
   "stats.tasks.empty": "还没有完成的任务。",
   "stats.split.filed": "已归入清单",
-  "stats.split.unfiled": "未标记",
-  "stats.split.share": "归档占比",
+  "stats.split.unfiled": "未归类",
+  "stats.split.share": "归类占比",
   "stats.compare.focus": "专注时长",
   "stats.compare.done": "完成任务",
+
+  /* ── Manual entry ────────────────────────────────────────── */
+  "focusLog.add": "补记",
+  "focusLog.addTitle": "补记一段专注",
+  "focusLog.addDesc": "把没被记录的专注时间补进日志，按本地时间保存。",
+  "focusLog.date": "日期",
+  "focusLog.start": "开始",
+  "focusLog.end": "结束",
+  "focusLog.addSubmit": "补记",
+  "focusLog.added": "已补记 {value}",
+  "focusLog.invalid": "结束时间必须晚于开始时间",
+  "focusLog.future": "不能补记未来的时间",
+  "focusLog.overlap": "这段时间与已有的记录重叠了",
+
+  /* ── Command palette ─────────────────────────────────────── */
+  "palette.placeholder": "输入命令或搜索…",
+  "palette.empty": "没有匹配的命令",
+  "palette.hint": "↑↓ 选择 · Enter 执行",
+  /* The palette's last row: whatever was typed, read as a quick add. Quoted the
+     way `quickAdd.intoList` quotes a list name, because it is the same kind of
+     borrowed text — the user's words, dropped into a sentence. */
+  "palette.create": "添加任务「{title}」",
+  "cmd.newTask": "新建任务",
+  "cmd.newTaskFull": "新建任务（完整编辑器）",
+  "cmd.toggleFocus": "开始 / 结束专注",
+  "cmd.screen.focus": "前往：专注",
+  "cmd.screen.stats": "前往：统计",
+  "cmd.screen.settings": "前往：设置",
+  "cmd.theme.light": "主题：浅色",
+  "cmd.theme.dark": "主题：深色",
+  "cmd.theme.system": "主题：跟随系统",
+  "cmd.language": "切换语言 / Switch language",
+  "cmd.export": "导出专注 CSV",
+  "cmd.clearCompleted": "清理已完成任务",
+  "cmd.view.all": "视图：全部任务",
+  "cmd.view.today": "视图：今天",
+  "cmd.view.upcoming": "视图：即将到期",
+  "cmd.view.overdue": "视图：已逾期",
+  "cmd.view.starred": "视图：已加星",
+  "cmd.view.completed": "视图：已完成",
 };
 
 export type MessageKey = keyof typeof zh;
@@ -530,6 +588,7 @@ const en: Record<MessageKey, Message> = {
   /* ── Shared ──────────────────────────────────────────────── */
   "common.all": "All",
   "common.cancel": "Cancel",
+  "common.close": "Close",
   "common.save": "Save",
   "common.undo": "Undo",
   "common.clear": "Clear",
@@ -671,6 +730,9 @@ const en: Record<MessageKey, Message> = {
   "settings.minSpanHint": "Spans shorter than this, in minutes, are dropped when they close; recorded focus is unaffected.",
   "settings.maxSpan": "Running span cap",
   "settings.maxSpanHint": "A span still running is credited up to this, in hours; finished spans are unaffected.",
+  "settings.globalShortcuts": "Global shortcuts",
+  "settings.globalShortcutsHint":
+    "{mod}F flips the focus switch; turning this off unregisters it immediately.",
   "settings.sectionData": "Data",
   "settings.privacy": "Privacy policy",
   "settings.privacyAction": "View",
@@ -687,15 +749,18 @@ const en: Record<MessageKey, Message> = {
   "settings.deleteAllType": "Type {keyword} to confirm",
   "settings.deleteAllDone": "All data deleted",
   "settings.theme": "Theme",
+  "settings.hideShortcutHints": "Hide shortcut hints",
+  "settings.sectionAbout": "About",
+  "settings.version": "Version",
+  /* Same as the Chinese block: a bare build number, and the `v` is copy. */
+  "settings.versionHint": "v{version}",
 
   /* ── Sync ────────────────────────────────────────────────── */
   "settings.sectionSync": "Sync",
   "sync.enable": "Enable sync",
   "sync.enableHint":
-    "Sync the focus switch and the last two days of focus records to the cloud, so a phone can view and toggle focus remotely once it has the sync code. Older history stays on this machine and is never uploaded; switching sync off clears the cloud as well.",
+    "Sync the focus switch and the last two days of focus records to the cloud. Older history is never uploaded; switching sync off clears the cloud as well.",
   "sync.code": "Sync code",
-  "sync.codeHint":
-    "Generated on first enable; enter the same code on the phone to see this computer's focus session.",
   "sync.copyCode": "Copy",
   "sync.codeCopied": "Sync code copied",
   "sync.regenerate": "Regenerate",
@@ -709,6 +774,9 @@ const en: Record<MessageKey, Message> = {
   "sync.status.error": "Sync error: {error}",
   "sync.lastSync": "Last synced {time}",
   "sync.never": "Never synced",
+  "sync.qr": "Pair with a QR code",
+  "sync.qrHint":
+    "Scan with the phone's camera — the link opens the page with the sync code already filled in.",
   "sync.mobileHint":
     "Open {url} in a browser and enter the sync code above to view and toggle focus remotely.",
   "sync.mobileUrlCopy": "Copy the phone address",
@@ -748,6 +816,7 @@ const en: Record<MessageKey, Message> = {
 
   /* ── Quick add ───────────────────────────────────────────── */
   "quickAdd.placeholder": "Add a task, press Enter to save…",
+  "quickAdd.placeholderNoKeys": "Add a task…",
   "quickAdd.aria": "Quick add a task",
   "quickAdd.openEditor": "Open the full editor",
   "quickAdd.detailButton": "Details",
@@ -1019,6 +1088,45 @@ const en: Record<MessageKey, Message> = {
   "stats.split.share": "Filed share",
   "stats.compare.focus": "Focus time",
   "stats.compare.done": "Tasks done",
+
+  /* ── Manual entry ────────────────────────────────────────── */
+  "focusLog.add": "Add entry",
+  "focusLog.addTitle": "Log a stretch by hand",
+  "focusLog.addDesc":
+    "Backfills useful time that was never recorded, in your local clock.",
+  "focusLog.date": "Date",
+  "focusLog.start": "Start",
+  "focusLog.end": "End",
+  "focusLog.addSubmit": "Add",
+  "focusLog.added": "Logged {value}",
+  "focusLog.invalid": "The end must be later than the start",
+  "focusLog.future": "You can't log time in the future",
+  "focusLog.overlap": "That time is already claimed by another stretch",
+
+  /* ── Command palette ─────────────────────────────────────── */
+  "palette.placeholder": "Type a command or search…",
+  "palette.empty": "No matching commands",
+  "palette.hint": "↑↓ to pick · Enter to run",
+  /* Same row as the Chinese block: the user's words in a sentence of ours. */
+  "palette.create": "Create task “{title}”",
+  "cmd.newTask": "New task",
+  "cmd.newTaskFull": "New task (full editor)",
+  "cmd.toggleFocus": "Start / stop focus",
+  "cmd.screen.focus": "Go to: Focus",
+  "cmd.screen.stats": "Go to: Statistics",
+  "cmd.screen.settings": "Go to: Settings",
+  "cmd.theme.light": "Theme: Light",
+  "cmd.theme.dark": "Theme: Dark",
+  "cmd.theme.system": "Theme: System",
+  "cmd.language": "切换语言 / Switch language",
+  "cmd.export": "Export focus CSV",
+  "cmd.clearCompleted": "Clear completed tasks",
+  "cmd.view.all": "View: All tasks",
+  "cmd.view.today": "View: Today",
+  "cmd.view.upcoming": "View: Due soon",
+  "cmd.view.overdue": "View: Overdue",
+  "cmd.view.starred": "View: Starred",
+  "cmd.view.completed": "View: Completed",
 };
 
 export const DICTS: Record<Language, Record<MessageKey, Message>> = {

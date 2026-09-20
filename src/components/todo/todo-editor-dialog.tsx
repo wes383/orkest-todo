@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
+import { Kbd, KbdChord } from "@/components/ui/kbd";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -54,6 +54,10 @@ export interface TodoEditorDialogProps {
   todo: Todo | null;
   lists: TodoList[];
   defaultListId: string;
+  /** Whether the dialog spells out the keys it answers to — Enter/Backspace by
+      the subtask field, <mod>+Enter at its foot. See
+      `AppSettings.hideShortcutHints`; both the field and the save still work. */
+  hideShortcutHints: boolean;
   onSubmit: (draft: TodoDraft) => void;
 }
 
@@ -130,6 +134,7 @@ export function TodoEditorDialog({
   todo,
   lists,
   defaultListId,
+  hideShortcutHints,
   onSubmit,
 }: TodoEditorDialogProps) {
   const { t, language, locale } = useI18n();
@@ -140,7 +145,9 @@ export function TodoEditorDialog({
 
   useEffect(() => {
     if (!open) return;
-    setForm(todo ? formFromTodo(todo, defaultListId) : emptyForm(defaultListId));
+    setForm(
+      todo ? formFromTodo(todo, defaultListId) : emptyForm(defaultListId)
+    );
     setTagInput("");
     setSubtaskInput("");
   }, [open, todo, defaultListId]);
@@ -493,21 +500,26 @@ export function TodoEditorDialog({
                * and the surrounding `inline-flex … gap-1.5` supplies the
                * spacing, so no message needs to carry a leading or trailing
                * space.
+               *
+               * Both clauses are key hints, so 隐藏快捷键提示 takes the whole row
+               * rather than leaving fragments ("按 添加") behind.
                */}
-              <Hint className="mt-2">
-                <span className="inline-flex items-center gap-1.5">
-                  {t("editor.hintPress")}
-                  <Kbd className="text-[10px]">Enter</Kbd>
-                  {t("editor.hintAdd")}
-                </span>
-                <span aria-hidden="true" className="text-foreground-faint">
-                  ·
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Kbd className="text-[10px]">Backspace</Kbd>
-                  {t("editor.hintRemoveLast")}
-                </span>
-              </Hint>
+              {!hideShortcutHints && (
+                <Hint className="mt-2">
+                  <span className="inline-flex items-center gap-1.5">
+                    {t("editor.hintPress")}
+                    <Kbd className="text-[10px]">Enter</Kbd>
+                    {t("editor.hintAdd")}
+                  </span>
+                  <span aria-hidden="true" className="text-foreground-faint">
+                    ·
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Kbd className="text-[10px]">Backspace</Kbd>
+                    {t("editor.hintRemoveLast")}
+                  </span>
+                </Hint>
+              )}
 
               {form.tags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -613,12 +625,13 @@ export function TodoEditorDialog({
         </div>
 
         <DialogFooter>
-          <span className="mr-auto flex items-center gap-1.5 text-xs text-foreground-subtle">
-            {t("editor.hintPress")}
-            <Kbd className="text-[10px]">{MOD_KEY}</Kbd>
-            <Kbd className="text-[10px]">Enter</Kbd>
-            {t("editor.hintSave")}
-          </span>
+          {!hideShortcutHints && (
+            <span className="mr-auto flex items-center gap-1.5 text-xs text-foreground-subtle">
+              {t("editor.hintPress")}
+              <KbdChord keys={[MOD_KEY, "Enter"]} />
+              {t("editor.hintSave")}
+            </span>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}
           </Button>

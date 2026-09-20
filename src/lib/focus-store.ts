@@ -20,13 +20,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { spanLimits } from "@/lib/settings";
-import type { FocusSpan } from "@/lib/focus-spans";
+import { overlaps, type FocusSpan } from "@/lib/focus-spans";
 
 const LOG_KEY = "orkest-todo.focus.log.v1";
 const STATE_KEY = "orkest-todo.focus.state";
 
 /** The site has exactly two states. Nothing else. */
 export type FocusState = "idle" | "useful";
+
+/** Why a stretch written by hand was turned away. `"invalid"` is every answer
+    a length can give — no stretch at all, or one under the floor; `"overlap"`
+    is time the log already holds. `null` is the only answer that means the
+    stretch was kept. */
+export type AddRefusal = "invalid" | "overlap";
 
 interface Persisted {
   version: number;
@@ -347,6 +353,40 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
   );
 
   /**
+   * A stretch written by hand — the log's answer to "I was focusing, the
+   * switch was not". It is judged by the rules as they stand right now, the
+   * way a stretch closed this second would be, and it answers with the reason
+   * it was turned away rather than with a bare yes or no, so the dialog can
+   * print the log's own objection: `"invalid"` for anything that is not a
+   * stretch worth keeping — nothing at all, or under the floor — and
+   * `"overlap"` for time the log already holds. The log keeps one version of
+   * every hour, which is the same rule the row editor enforces and the sync
+   * merge repairs. An accepted stretch is spliced in by start order so the log
+   * stays chronological and the merge can never see it out of place.
+   */
+  const addManual = useCallback(
+    (start: number, end: number, listId: string | null): AddRefusal | null => {
+      if (!(end > start)) return "invalid";
+      const { minMs } = spanLimits();
+      if (end - start < minMs) return "invalid";
+      // Tested against every stretch rather than the two neighbours: a log
+      // kept before this rule existed can already hold overlaps, and a
+      // neighbour test would wave the new stretch straight into one of them.
+      if (spans.some((span) => overlaps(span, start, end))) return "overlap";
+      const entry: FocusSpan = { start, end, listId, minMs };
+      patch((prev) => {
+        const next = [...prev];
+        const at = next.findIndex((s) => s.start > start);
+        if (at === -1) next.push(entry);
+        else next.splice(at, 0, entry);
+        return next;
+      });
+      return null;
+    },
+    [patch, spans]
+  );
+
+  /**
    * Forgets a list that no longer exists.
    *
    * Its sessions are not re-homed the way its tasks are: a task moved to another
@@ -461,6 +501,7 @@ export function useFocusStore(capMs: number = spanLimits().maxMs) {
     reschedule,
     split,
     remove,
+    addManual,
     forgetList,
     clearAll,
     stopForExit,

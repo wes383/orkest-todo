@@ -17,7 +17,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, Copy, Download, ExternalLink, Languages, RefreshCw, Trash2 } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, Languages, QrCode, RefreshCw, Trash2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -31,6 +32,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import {
@@ -45,10 +53,12 @@ import { Switch } from "@/components/ui/switch";
 import { useAppTheme } from "@/components/theme-provider";
 import { downloadAll } from "@/components/focus/focus-csv";
 import type { FocusSpan } from "@/lib/focus-spans";
+import { chordModifier } from "@/lib/global-shortcut";
 import { useI18n } from "@/lib/i18n";
 import { LANGUAGES, LANGUAGE_LABELS, LOCALES, type MessageKey } from "@/lib/messages";
 import { HIDEABLE_VIEWS, MIN_WIDGET_OPACITY, type AppSettings, type HideableView } from "@/lib/settings";
 import { formatCode } from "@/lib/sync/config";
+import { APP_VERSION } from "@/lib/version";
 import type { SyncControls, SyncStatus } from "@/lib/sync/engine";
 import type { Todo, TodoList } from "@/lib/types";
 
@@ -195,6 +205,12 @@ export interface SettingsViewProps {
       closes the app. Mirrored down to the window handler in Rust, which is the
       side that has to answer a close request; see `useCloseToTray`. */
   setCloseToTray: (value: boolean) => void;
+  /** The OS-wide chord — mirrored down to Rust, which registers/unregisters. */
+  setGlobalShortcuts: (value: boolean) => void;
+  /** 隐藏快捷键提示 — whether the interface prints its chords at all. Stored
+      here like the rest and read by the toolbar, QuickAdd, the editor, the
+      palette and the focus screen; nothing is unbound by it. */
+  setHideShortcutHints: (value: boolean) => void;
   /** 开机自启 — the OS login item, read and written by the plugin rather than
       stored here; see `autostart.ts` for why it is the one row with no entry in
       `AppSettings`. */
@@ -234,6 +250,8 @@ export function SettingsView({
   setWidgetOpacity,
   setQuitStopsFocus,
   setCloseToTray,
+  setGlobalShortcuts,
+  setHideShortcutHints,
   onDeleteAllData,
   autostart,
   focusWidget,
@@ -254,10 +272,15 @@ export function SettingsView({
 
   /*
    * 同步 — the Supabase connection is baked into the build, so the section
-   * is one switch, one code, one button: flip it, copy the code onto the
-   * phone, done.
+   * is one switch and one code: flip it, get the code onto the phone (copied
+   * or scanned), done.
    */
   const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
+
+  /** Whether the sync code is being shown as a QR code. The code is the one
+      thing about this section that is easier to carry across as an image than
+      as text, so it gets a surface of its own rather than a row of its own. */
+  const [qrOpen, setQrOpen] = useState(false);
 
   /** Whether the code's copy button is still wearing its tick. */
   const [codeCopied, setCodeCopied] = useState(false);
@@ -404,6 +427,17 @@ export function SettingsView({
                   aria-label={t("appearance.highContrast")}
                 />
               </Row>
+              <Row
+                label={t("settings.hideShortcutHints")}
+                htmlFor="settings-hide-shortcut-hints"
+              >
+                <Switch
+                  id="settings-hide-shortcut-hints"
+                  checked={settings.hideShortcutHints}
+                  onCheckedChange={setHideShortcutHints}
+                  aria-label={t("settings.hideShortcutHints")}
+                />
+              </Row>
             </div>
           </section>
 
@@ -467,9 +501,19 @@ export function SettingsView({
             </div>
           </section>
 
-          {/* Focus — the two rules the log measures a stretch by. Values are
-              clamped here before they are stored, so a wild number never
-              reaches the log; settings.ts clamps again on the way back in. */}
+          {/* Focus — how the switch can be reached without the main window, and
+              the rules the log measures a stretch by.
+
+              The pill and the chord are one idea twice: the switch made
+              visible, and the switch made reachable from wherever the cursor
+              is. Both are desktop-only, and both keep their truth outside this
+              app — the pill's in a file Rust owns, the chord's in a claim the
+              OS holds — which is why either can fail out loud where a plain
+              switch would only have sprung back.
+
+              Values are clamped here before they are stored, so a wild number
+              never reaches the log; settings.ts clamps again on the way back
+              in. */}
           <section className="mt-6">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionFocus")}
@@ -558,6 +602,31 @@ export function SettingsView({
                     )
                   }
                   className="h-9 w-24 rounded-md text-sm"
+                />
+              </Row>
+              {/* The chord, last: where the two numbers above say what a stretch
+                  is worth, this says how the switch is reached while the window
+                  is somewhere else. Its hint is written with `chordModifier()`,
+                  because ⌃⌥ is how macOS spells the pair and is two glyphs that
+                  name no key on a Windows keyboard. Turning it off unregisters
+                  at once; a registration the OS turns down (another app already
+                  owns the chord) is a console warning rather than a switch that
+                  springs back. */}
+              <Row
+                label={t("settings.globalShortcuts")}
+                hint={
+                  desktop
+                    ? t("settings.globalShortcutsHint", { mod: chordModifier() })
+                    : t("settings.desktopOnly")
+                }
+                htmlFor="settings-global-shortcuts"
+              >
+                <Switch
+                  id="settings-global-shortcuts"
+                  checked={settings.globalShortcuts}
+                  disabled={!desktop}
+                  onCheckedChange={setGlobalShortcuts}
+                  aria-label={t("settings.globalShortcuts")}
                 />
               </Row>
             </div>
@@ -651,7 +720,7 @@ export function SettingsView({
                   aria-label={t("sync.enable")}
                 />
               </Row>
-              <Row label={t("sync.code")} hint={t("sync.codeHint")}>
+              <Row label={t("sync.code")}>
                 {sync.code ? (
                   <div className="flex items-center gap-1">
                     <code className="rounded bg-surface-muted px-2 py-1 font-mono text-xs tracking-wider">
@@ -672,6 +741,20 @@ export function SettingsView({
                       className={codeCopied ? "text-green-fg disabled:opacity-100" : undefined}
                     >
                       <Icon icon={codeCopied ? Check : Copy} size="sm" />
+                    </Button>
+                    {/* The QR, one press away instead of a row of its own: it
+                        is how the code reaches a phone's camera, and it is
+                        wanted only while the phone is being set up. It sits
+                        between the two, so the hand-over pair stands together
+                        and the destructive one stays last — regenerating
+                        orphans the cloud data under the old code. */}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setQrOpen(true)}
+                      aria-label={t("sync.qr")}
+                    >
+                      <Icon icon={QrCode} size="sm" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -799,6 +882,28 @@ export function SettingsView({
               </Row>
             </div>
           </section>
+
+          {/* 关于 — the build's number, and the last panel on the page.
+              It belongs here because this is where a person comes when
+              something is wrong, and "which version are you on" is the first
+              question any bug report gets asked.
+
+              A panel and a row like every section above it, with one
+              difference: the row has no control on the right. `版本` takes the
+              label's place and the number reads as its explanation, the way
+              `settings.autostartHint` explains the row above it — which is
+              what it is: a fact about this build, not a setting to change. */}
+          <section className="mt-6">
+            <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
+              {t("settings.sectionAbout")}
+            </SubsectionLabel>
+            <div className="mt-2 overflow-hidden rounded-lg border border-border bg-surface">
+              <Row
+                label={t("settings.version")}
+                hint={t("settings.versionHint", { version: APP_VERSION })}
+              />
+            </div>
+          </section>
         </div>
       </div>
 
@@ -877,6 +982,35 @@ export function SettingsView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* The QR on a surface of its own. The payload is the mobile URL with the
+          code in the query, so scanning opens the page with the code already
+          filled in; the phone validates the shape before it ever connects, so a
+          truncated scan fails there with the same message a mistyped code gets.
+          Only rendered while a code exists — before the first enable there is
+          nothing to hand over, and the button that opens this is not there
+          either. */}
+      {sync.code && (
+        <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+          <DialogContent className="max-w-sm" closeLabel={t("common.close")}>
+            <DialogHeader>
+              <DialogTitle>{t("sync.qr")}</DialogTitle>
+              <DialogDescription>{t("sync.qrHint")}</DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-center p-7 pt-5">
+              {/* White behind the code in either theme: a QR code is read by a
+                  camera, and a scanner needs dark modules on light ones. */}
+              <div className="rounded-xl bg-white p-3">
+                <QRCodeSVG
+                  value={`https://${MOBILE_URL}/?code=${sync.code}`}
+                  size={192}
+                  marginSize={0}
+                />
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </main>
   );
 }
