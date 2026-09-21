@@ -54,6 +54,10 @@ export interface TodoEditorDialogProps {
   todo: Todo | null;
   lists: TodoList[];
   defaultListId: string;
+  /** The due date a brand-new task opens with — the calendar screen hands in
+      the day its "+" or double-click was aimed at. Ignored while editing:
+      an existing task's own date always wins. */
+  defaultDueDate?: string | null;
   /** Whether the dialog spells out the keys it answers to — Enter/Backspace by
       the subtask field, <mod>+Enter at its foot. See
       `AppSettings.hideShortcutHints`; both the field and the save still work. */
@@ -95,12 +99,12 @@ interface FormState {
   recur: Recur | null;
 }
 
-function emptyForm(listId: string): FormState {
+function emptyForm(listId: string, dueDate = ""): FormState {
   return {
     title: "",
     notes: "",
     priority: "medium",
-    dueDate: "",
+    dueDate,
     listId,
     tags: [],
     subtasks: [],
@@ -134,23 +138,28 @@ export function TodoEditorDialog({
   todo,
   lists,
   defaultListId,
+  defaultDueDate,
   hideShortcutHints,
   onSubmit,
 }: TodoEditorDialogProps) {
   const { t, language, locale } = useI18n();
   const shortcuts = useMemo(() => dueShortcuts(t), [t]);
-  const [form, setForm] = useState<FormState>(() => emptyForm(defaultListId));
+  const [form, setForm] = useState<FormState>(() =>
+    emptyForm(defaultListId, defaultDueDate ?? "")
+  );
   const [tagInput, setTagInput] = useState("");
   const [subtaskInput, setSubtaskInput] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setForm(
-      todo ? formFromTodo(todo, defaultListId) : emptyForm(defaultListId)
+      todo
+        ? formFromTodo(todo, defaultListId)
+        : emptyForm(defaultListId, defaultDueDate ?? "")
     );
     setTagInput("");
     setSubtaskInput("");
-  }, [open, todo, defaultListId]);
+  }, [open, todo, defaultListId, defaultDueDate]);
 
   const patch = (next: Partial<FormState>) => setForm((f) => ({ ...f, ...next }));
 

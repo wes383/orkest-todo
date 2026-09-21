@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ClipboardList, Moon, Search, Settings, Sun, SunMoon, Timer, Trash2, BarChart3, Languages, Plus, Zap } from "lucide-react";
+import { ClipboardList, Calendar, Moon, Search, Settings, Sun, SunMoon, Timer, Trash2, BarChart3, Languages, Plus, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/messages";
@@ -232,6 +232,7 @@ export const PALETTE_ICONS = {
   plus: Plus,
   timer: Timer,
   stats: BarChart3,
+  calendar: Calendar,
   settings: Settings,
   list: ClipboardList,
   sun: Sun,

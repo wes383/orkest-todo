@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
 import { TimePicker } from "@/components/ui/time-picker";
-import { Card, Heat, Line, Metric, Segmented } from "@/components/focus/focus-charts";
+import { Card, Heat, Line, Metric, Segmented, YearHeat } from "@/components/focus/focus-charts";
 import {
   PERIODS,
   SCOPE_ALL,
@@ -531,6 +531,45 @@ export function FocusStats({
     () => (now === null ? null : bucketByDay(scoped, now)),
     [scoped, now]
   );
+
+  /* ── The year heatmap's year ───────────────────────────────── */
+
+  /** The years the log reaches and this one — the two bounds the heatmap's
+      year stepper walks between. Read off the same buckets as the grid, so a
+      scope change moves the bounds with it. */
+  const heatYearBounds = useMemo(() => {
+    if (buckets === null || now === null) return null;
+    const current = new Date(now).getFullYear();
+    let first = current;
+    for (const day of buckets.keys()) {
+      const year = new Date(day).getFullYear();
+      if (year < first) first = year;
+    }
+    return { first, current };
+  }, [buckets, now]);
+
+  /** `null` = the current year. The shown year is clamped against the bounds,
+      so a scope change that shrinks the log cannot leave the grid on a year
+      it no longer reaches. */
+  const [heatYear, setHeatYear] = useState<number | null>(null);
+  const heatYearShown =
+    heatYearBounds === null
+      ? null
+      : Math.min(
+          Math.max(heatYear ?? heatYearBounds.current, heatYearBounds.first),
+          heatYearBounds.current
+        );
+
+  /** The year's total, worn as the card's hint — the figure the colours are
+      fractions of. */
+  const heatYearTotal = useMemo(() => {
+    if (buckets === null || heatYearShown === null) return 0;
+    let sum = 0;
+    for (const [day, bucket] of buckets) {
+      if (new Date(day).getFullYear() === heatYearShown) sum += bucket.useful;
+    }
+    return sum;
+  }, [buckets, heatYearShown]);
 
   /** Everything that does not depend on the period selector. */
   const figures = useMemo(() => {
@@ -1843,6 +1882,62 @@ export function FocusStats({
                   </Card>
 
                   </div>
+
+                  {/* The year at a glance, between the period-bound figures
+                      and the milestone board: one cell a day over a whole
+                      calendar year, stepped back as far as the log reaches.
+                      Read off the same buckets as everything above it, so the
+                      scope picker rescales it too. */}
+                  <Card
+                    className="xl:col-span-12"
+                    title={t("focus.log.yearHeat")}
+                    hint={
+                      heatYearTotal > 0
+                        ? duration(heatYearTotal, language)
+                        : undefined
+                    }
+                    action={
+                      heatYearBounds !== null && heatYearShown !== null ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label={t("focus.log.yearHeat.prevYear")}
+                            disabled={heatYearShown <= heatYearBounds.first}
+                            onClick={() => setHeatYear(heatYearShown - 1)}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-foreground-muted transition-colors duration-base ease-out hover:bg-hover-bg hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                          >
+                            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                          <span className="min-w-16 text-center text-sm font-medium tabular-nums text-foreground">
+                            {new Intl.DateTimeFormat(LOCALES[language], {
+                              year: "numeric",
+                            }).format(new Date(heatYearShown, 0, 1))}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={t("focus.log.yearHeat.nextYear")}
+                            disabled={heatYearShown >= heatYearBounds.current}
+                            onClick={() => setHeatYear(heatYearShown + 1)}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-foreground-muted transition-colors duration-base ease-out hover:bg-hover-bg hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                          >
+                            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        </div>
+                      ) : undefined
+                    }
+                  >
+                    {buckets !== null && now !== null && heatYearShown !== null && (
+                      <YearHeat
+                        buckets={buckets}
+                        today={startOfDay(now)}
+                        year={heatYearShown}
+                        lang={language}
+                        read={(ms) => duration(ms, language)}
+                        lessLabel={t("focus.log.yearHeat.less")}
+                        moreLabel={t("focus.log.yearHeat.more")}
+                      />
+                    )}
+                  </Card>
 
                   <Card
                     className="xl:col-span-12"

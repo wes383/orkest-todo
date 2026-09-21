@@ -147,7 +147,7 @@ export const VIEW_ORDER: ViewId[] = [
  * than another filter over the task list, which is why they are screens and
  * not views.
  */
-export type Screen = "todos" | "focus" | "stats" | "settings";
+export type Screen = "todos" | "calendar" | "focus" | "stats" | "settings";
 
 export type StatusFilter = "all" | "active" | "completed";
 export type SortKey = "due" | "priority" | "created" | "title";

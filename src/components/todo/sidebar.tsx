@@ -3,6 +3,7 @@ import { useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
+  Calendar,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
@@ -210,6 +211,7 @@ export interface SidebarProps {
   screen: Screen;
   /** Which views are hidden, straight from the settings page. */
   settings: AppSettings;
+  onSelectCalendar: () => void;
   onSelectFocus: () => void;
   onSelectStats: () => void;
   onSelectSettings: () => void;
@@ -231,6 +233,7 @@ export function Sidebar({
   activeListId,
   screen,
   settings,
+  onSelectCalendar,
   onSelectFocus,
   onSelectStats,
   onSelectSettings,
@@ -466,7 +469,17 @@ export function Sidebar({
                  * in a column of icons. It shares its trigger with the right
                  * click, which the rail keeps — so nothing is lost, only moved.
                  */
-                const listRow = (railLabel?: string) => (
+                /*
+                 * The row is a button, and the ⋯ that edits the list is its
+                 * sibling — not its child. A button inside a button is
+                 * invalid HTML (React 19 says so in the console), and the
+                 * click would bubble into the row, so opening the menu also
+                 * switched the view to that list. The wrapper is already the
+                 * positioned box the ⋯ anchors to, so nothing moves; the
+                 * collapsed rail returns the bare button, because RailTip's
+                 * asChild chain needs a single element to clone.
+                 */
+                const rowButton = (railLabel?: string) => (
                   <button
                     type="button"
                     onClick={() => onSelectList(list.id)}
@@ -494,8 +507,14 @@ export function Sidebar({
                         )}
                       </>
                     )}
-
-                    {!collapsed && (
+                  </button>
+                );
+                const listRow = (railLabel?: string) =>
+                  collapsed ? (
+                    rowButton(railLabel)
+                  ) : (
+                    <>
+                      {rowButton(railLabel)}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -523,9 +542,8 @@ export function Sidebar({
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    )}
-                  </button>
-                );
+                    </>
+                  );
 
                 return (
                   <RailTip
@@ -602,6 +620,29 @@ export function Sidebar({
             collapsed && "items-center"
           )}
         >
+          {/* The task side's second shape: not a filter over the list but the
+              month the list is due on, so it stands with the screens at the
+              foot rather than with the views above. */}
+          <RailTip
+            label={t("screen.calendar")}
+            collapsed={collapsed}
+            button={(railLabel) => (
+              <button
+                type="button"
+                onClick={onSelectCalendar}
+                aria-current={screen === "calendar" ? "page" : undefined}
+                aria-label={railLabel}
+                className={rowClass(screen === "calendar")}
+              >
+                <Icon icon={Calendar} size="sm" />
+                {!collapsed && (
+                  <span className="flex-1 truncate text-left">
+                    {t("screen.calendar")}
+                  </span>
+                )}
+              </button>
+            )}
+          />
           {/* No count on focus, either. Every view row above carries a number
               of tasks; the focus screen has none to carry, and a `0` there
               would be a lie rather than an absence. And no green on the icon —

@@ -12,12 +12,17 @@
  * a grid whose colour is measured against its own fullest cell.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { LOCALES, type Language } from "@/lib/messages";
 import { cn } from "@/lib/utils";
-import { hourName } from "@/lib/focus-spans";
+import {
+  hourName,
+  shiftDays,
+  startOfWeek,
+  type DayBucket,
+} from "@/lib/focus-spans";
 
 /** The panel the log is laid out in — a hairline on the sheet's own surface,
     with the title standing in the margin above the figures it names. */
@@ -414,6 +419,216 @@ export function Heat({
           {AXIS_HOURS.map((hour) => (
             <span key={hour}>{hourName(hour, lang)}</span>
           ))}
+        </div>
+      </div>
+      {tip === null ? null : <BarTip text={tip.text} at={tip.at} />}
+    </div>
+  );
+}
+
+/* ── The year at a glance ─────────────────────────────────── */
+
+/** Cell edge and the gap between cells, in px. Fixed rather than fluid: fifty-
+    three `flex-1` squares would grow absurdly tall on a wide card, and the
+    month labels and the legend are positioned off these two numbers, so they
+    live in one place. */
+const YEAR_CELL = 12;
+const YEAR_GAP = 3;
+
+/**
+ * The GitHub-style year grid: one cell a day, a column a week, Monday on top
+ * the way every other reading of the log runs. The grid shows one whole
+ * calendar year — January through December, with the weeks' spillover days
+ * left blank — and the card it lives in owns the year being shown, stepping
+ * it between the first year the log reaches and this one.
+ *
+ * It takes the same `bucketByDay` map the rest of the page reads, so it
+ * rescales with the scope picker for free and can never disagree with a card
+ * beside it. Colour is measured on the same five-step ramp as the hour grid
+ * (`HEAT_STEPS` above), against the fullest day *of the year on screen* — a
+ * shade answers to a quarter of that year's best day, so a quiet year still
+ * has a shape of its own.
+ */
+export function YearHeat({
+  buckets,
+  today,
+  year,
+  lang,
+  read,
+  lessLabel,
+  moreLabel,
+}: {
+  /** The log already cut into days — the same map every other figure reads. */
+  buckets: Map<number, DayBucket>;
+  /** Local midnight of today. Days past it are placeholders, not cells. */
+  today: number;
+  /** The calendar year being shown. */
+  year: number;
+  lang: Language;
+  /** Turns a cell's milliseconds into the words the tooltip shows. */
+  read: (ms: number) => string;
+  /** The two ends of the legend under the grid. */
+  lessLabel: string;
+  moreLabel: string;
+}) {
+  const { tip, enter, leave } = useTip();
+
+  const { cols, fullest } = useMemo(() => {
+    const jan1 = new Date(year, 0, 1).getTime();
+    const dec31 = new Date(year, 11, 31).getTime();
+    const cols: { day: number; value: number; blank: boolean }[][] = [];
+    let fullest = 1;
+    // Calendar arithmetic, not ms: a daylight-saving week is still one week.
+    for (
+      let week = startOfWeek(jan1);
+      week <= dec31;
+      week = shiftDays(week, 7)
+    ) {
+      const col: { day: number; value: number; blank: boolean }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const day = shiftDays(week, d);
+        // The days a boundary week borrows from the neighbouring year, and
+        // the days not yet lived, keep the grid's shape without pretending
+        // to be real days.
+        const blank = day < jan1 || day > dec31 || day > today;
+        const value = blank ? 0 : (buckets.get(day)?.useful ?? 0);
+        if (value > fullest) fullest = value;
+        col.push({ day, value, blank });
+      }
+      cols.push(col);
+    }
+    return { cols, fullest };
+  }, [buckets, today, year]);
+
+  /* Month labels sit over the column whose Monday opens a new month. */
+  const monthLabels = useMemo(() => {
+    const format = new Intl.DateTimeFormat(LOCALES[lang], { month: "short" });
+    const out: { w: number; label: string }[] = [];
+    let previous = -1;
+    cols.forEach((col, w) => {
+      const month = new Date(col[0].day).getMonth();
+      if (month !== previous) {
+        out.push({ w, label: format.format(new Date(col[0].day)) });
+        previous = month;
+      }
+    });
+    return out;
+  }, [cols, lang]);
+
+  /* The date as the tooltip reads it, year included — a cell can sit eleven
+     months back, where the bare `Sep 20` shape would leave the year to be
+     guessed. */
+  const dateFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat(LOCALES[lang], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }),
+    [lang]
+  );
+
+  /* Monday, Wednesday and Friday named at their rows — all seven would be
+     four copies of what three already say. 2024-01-01 was a Monday, so the
+     names fall out of the platform's calendar. */
+  const dayNames = useMemo(() => {
+    const format = new Intl.DateTimeFormat(LOCALES[lang], { weekday: "short" });
+    return [0, 2, 4].map((index) => format.format(new Date(2024, 0, 1 + index)));
+  }, [lang]);
+
+  return (
+    /*
+     * `overflow-y-hidden` is load-bearing, not redundant: with only
+     * `overflow-x: auto`, the other axis computes to `auto` as well, and a
+     * platform that draws classic scrollbars (Windows — always-on ones
+     * especially) then paints a vertical track the grid has no use for, or
+     * a real vertical scrollbar the moment the horizontal one takes its 10px
+     * of height.
+     *
+     * The bottom padding is the horizontal scrollbar's seat for the narrow
+     * window that needs one: it covers padding, never the legend or the
+     * grid's last row. The theme's own scrollbars are 10px; `pb-3` is 12.
+     */
+    <div className="overflow-x-auto overflow-y-hidden">
+      <div className="w-max pb-3" onPointerLeave={leave}>
+        {/* Month labels, positioned off the fixed cell geometry and offset by
+            the weekday column's width. */}
+        <div
+          className="relative mb-1.5 h-4"
+          style={{ marginLeft: 28 + YEAR_GAP }}
+        >
+          {monthLabels.map(({ w, label }) => (
+            <span
+              key={w}
+              className="absolute top-0 text-xs leading-none text-foreground-faint"
+              style={{ left: w * (YEAR_CELL + YEAR_GAP) }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        <div className="flex" style={{ gap: YEAR_GAP }}>
+          {/* Weekday names down the left edge. */}
+          <div className="flex w-7 shrink-0 flex-col" style={{ gap: YEAR_GAP }}>
+            {[0, 1, 2, 3, 4, 5, 6].map((row) => (
+              <span
+                key={row}
+                className="flex items-center text-xs leading-none text-foreground-faint"
+                style={{ height: YEAR_CELL }}
+              >
+                {row === 0
+                  ? dayNames[0]
+                  : row === 2
+                    ? dayNames[1]
+                    : row === 4
+                      ? dayNames[2]
+                      : ""}
+              </span>
+            ))}
+          </div>
+          {cols.map((col, w) => (
+            <div key={w} className="flex flex-col" style={{ gap: YEAR_GAP }}>
+              {col.map((cell) => {
+                const label = `${dateFormat.format(new Date(cell.day))} · ${read(cell.value)}`;
+                const quiet = cell.blank || cell.value <= 0;
+                return (
+                  <span
+                    key={cell.day}
+                    // A cell holding nothing has nothing to announce, and there
+                    // are three hundred and seventy-one of these.
+                    role={quiet ? undefined : "img"}
+                    aria-label={quiet ? undefined : label}
+                    aria-hidden={quiet ? true : undefined}
+                    onPointerEnter={
+                      cell.blank ? undefined : (event) => enter(event, label)
+                    }
+                    className={cn(
+                      "rounded-[3px]",
+                      cell.blank
+                        ? // Days outside the year — or not yet lived — keep
+                          // the grid's shape without pretending to be days.
+                          "opacity-0"
+                        : HEAT_STEPS[heatStep(cell.value, fullest)]
+                    )}
+                    style={{ width: YEAR_CELL, height: YEAR_CELL }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        {/* The legend, measured on the same ramp the cells are. */}
+        <div className="mt-2 flex items-center justify-end gap-1 text-xs leading-none text-foreground-faint">
+          <span>{lessLabel}</span>
+          {HEAT_STEPS.map((step) => (
+            <span
+              key={step}
+              aria-hidden="true"
+              className={cn("rounded-[3px]", step)}
+              style={{ width: YEAR_CELL, height: YEAR_CELL }}
+            />
+          ))}
+          <span>{moreLabel}</span>
         </div>
       </div>
       {tip === null ? null : <BarTip text={tip.text} at={tip.at} />}

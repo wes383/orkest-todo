@@ -45,6 +45,14 @@ const SettingsView = lazy(() =>
   import("@/components/settings/settings-view").then((m) => ({ default: m.SettingsView }))
 );
 /*
+ * The calendar is a month grid over the whole todo set — a second shape of
+ * the tasks rather than another filter over them, and heavy enough (42 cells
+ * of chips) to arrive on first visit rather than in the main bundle.
+ */
+const CalendarView = lazy(() =>
+  import("@/components/todo/calendar-view").then((m) => ({ default: m.CalendarView }))
+);
+/*
  * The editor brings the date/time pickers and react-day-picker with it —
  * none of which the task list needs. It renders only while open, so the chunk
  * loads on the first open and never before.
@@ -85,6 +93,7 @@ import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
 import { useI18n } from "@/lib/i18n";
+import { formatDate } from "@/lib/date";
 import type { MessageKey } from "@/lib/messages";
 import type { PaletteName, Screen, Todo, TodoList, ViewId } from "@/lib/types";
 
@@ -167,6 +176,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("todos");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Todo | null>(null);
+  /** The due date a freshly opened editor starts with — set by the calendar's
+      "+" and double-click, `null` on every other path to a new task. */
+  const [editorDueDate, setEditorDueDate] = useState<string | null>(null);
   const [listDialogOpen, setListDialogOpen] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
@@ -343,6 +355,15 @@ export default function App() {
 
   const openCreate = useCallback(() => {
     setEditing(null);
+    setEditorDueDate(null);
+    setEditorOpen(true);
+  }, []);
+
+  /** The calendar's "+" and double-click: the same editor, its due date
+      already aimed at the day that was pointed at. */
+  const openCreateFor = useCallback((iso: string) => {
+    setEditing(null);
+    setEditorDueDate(iso);
     setEditorOpen(true);
   }, []);
 
@@ -483,6 +504,31 @@ export default function App() {
       }
     },
     [addTodo, editing, updateTodo, t]
+  );
+
+  /**
+   * The calendar's drag-and-drop. The move is a due-date edit with the usual
+   * courtesies: a toast that says where the task went, and an undo that puts
+   * it back.
+   */
+  const handleReschedule = useCallback(
+    (todoId: string, iso: string) => {
+      const todo = todos.find((t) => t.id === todoId);
+      if (!todo || todo.dueDate === iso) return;
+      const previous = todo.dueDate;
+      updateTodo(todoId, { dueDate: iso });
+      toast.success(t("calendar.rescheduled"), {
+        description: t("calendar.rescheduledBody", {
+          title: todo.title,
+          date: formatDate(iso, language),
+        }),
+        action: {
+          label: t("common.undo"),
+          onClick: () => updateTodo(todoId, { dueDate: previous }),
+        },
+      });
+    },
+    [todos, updateTodo, t, language]
   );
 
   const handleDelete = useCallback(
@@ -636,6 +682,7 @@ export default function App() {
           focus.commit(focus.state === "useful" ? "idle" : "useful", lastFocusListId),
       },
       { id: "go-focus", labelKey: "cmd.screen.focus", icon: PALETTE_ICONS.timer, run: go("focus") },
+      { id: "go-calendar", labelKey: "cmd.screen.calendar", icon: PALETTE_ICONS.calendar, run: go("calendar") },
       { id: "go-stats", labelKey: "cmd.screen.stats", icon: PALETTE_ICONS.stats, run: go("stats") },
       { id: "go-settings", labelKey: "cmd.screen.settings", icon: PALETTE_ICONS.settings, run: go("settings") },
       { id: "view-all", labelKey: "cmd.view.all", icon: PALETTE_ICONS.list, run: view("all") },
@@ -758,6 +805,7 @@ export default function App() {
           activeListId={filters.listId}
           screen={screen}
           settings={settings}
+          onSelectCalendar={() => setScreen("calendar")}
           onSelectFocus={() => setScreen("focus")}
           onSelectStats={() => setScreen("stats")}
           onSelectSettings={() => setScreen("settings")}
@@ -781,7 +829,21 @@ export default function App() {
          * particular replaces the tasks rather than covering them, which is
          * what keeps the switch the only thing in view while a session runs.
          */}
-        {screen === "focus" ? (
+        {screen === "calendar" ? (
+          <Suspense fallback={<main className="h-full min-w-0 flex-1 bg-background" />}>
+            <CalendarView
+              todos={todos}
+              lists={lists}
+              onEdit={openEdit}
+              onCreateFor={openCreateFor}
+              onReschedule={handleReschedule}
+              onDelete={handleDelete}
+              onToggle={handleToggle}
+              onToggleStar={toggleStar}
+              onToggleSubtask={handleToggleSubtask}
+            />
+          </Suspense>
+        ) : screen === "focus" ? (
           <FocusView
             store={focus}
             lists={lists}
@@ -975,6 +1037,7 @@ export default function App() {
             todo={editing}
             lists={lists}
             defaultListId={editing?.listId ?? targetListId}
+            defaultDueDate={editing ? null : editorDueDate}
             hideShortcutHints={settings.hideShortcutHints}
             onSubmit={handleEditorSubmit}
           />

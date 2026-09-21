@@ -453,6 +453,37 @@
   }
   .scrollbar-none::-webkit-scrollbar { display: none; }
 
+  /* ── Radix Select's viewport, answered ─────────────────────────────
+     The library hides its own viewport's scrollbar in a runtime <style>
+     (`node_modules/@radix-ui/react-select`, `VIEWPORT_NAME`): with the
+     scroll buttons dropped (see `nativeScroll` on the component), that
+     leaves no way to say how long the list is. A bare class name cannot win
+     against the runtime rule — `[data-radix-select-viewport]` and a bare
+     class both weigh 0-1-0, and the runtime sheet arrives later — so the
+     viewport wears the class *and* the attribute here, which the sheet can
+     no longer outscore in either language. */
+  [data-radix-select-viewport].calendar-select-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--hover-bg-strong) transparent;
+  }
+  [data-radix-select-viewport].calendar-select-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  [data-radix-select-viewport].calendar-select-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  [data-radix-select-viewport].calendar-select-scroll::-webkit-scrollbar-thumb {
+    background: var(--hover-bg-strong);
+    border-radius: var(--radius-full);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  [data-radix-select-viewport].calendar-select-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--foreground-faint);
+    background-clip: content-box;
+  }
+
   [dir="rtl"] { direction: rtl; }
   [dir="ltr"] { direction: ltr; }
 
