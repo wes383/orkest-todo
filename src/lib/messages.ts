@@ -487,7 +487,7 @@ const zh = {
   "focus.log.when": "专注高效时段",
   "focus.log.allHistory": "全部历史",
   "focus.log.when.none": "记录还太少，看不出一天的形状。",
-  "focus.log.when.peak": "最高效的一小时是{days}的 {from}–{to}，累计 {value}。",
+  "focus.log.when.peak": "最高效的一小时是{from}–{to}，累计 {value}。",
   "focus.log.export": "导出全部数据",
   "focus.log.exportAction": "下载",
   "focus.log.exportSaved": "已导出到 {folder}",
@@ -1063,7 +1063,7 @@ const en: Record<MessageKey, Message> = {
   "focus.log.allHistory": "All history",
   "focus.log.when.none": "Not enough logged yet to see a shape to the day.",
   "focus.log.when.peak":
-    "Your most effective hour is {from}–{to} on {days}, holding {value} of useful time.",
+    "Your most effective hour is {from}–{to}, holding {value} of useful time.",
   "focus.log.export": "Export all data",
   "focus.log.exportAction": "Download",
   "focus.log.exportSaved": "Saved to {folder}",

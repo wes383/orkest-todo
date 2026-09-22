@@ -117,16 +117,6 @@ import { spanLimits } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { paletteVar, type Todo, type TodoList } from "@/lib/types";
 
-/** The weekday names in the heat grid's own Monday-first order: 2024-01-01 was
-    a Monday, so the names fall straight out of the platform's calendar rather
-    than out of a second dictionary to keep in step. */
-function weekdayNames(lang: Language): string[] {
-  const format = new Intl.DateTimeFormat(LOCALES[lang], { weekday: "short" });
-  return Array.from({ length: 7 }, (_, index) =>
-    format.format(new Date(2024, 0, 1 + index))
-  );
-}
-
 /* ── Milestones ───────────────────────────────────────────────────────────
    The ring, the name and the two lines under it. The name and the rule arrive
    as message keys with their variables, so a milestone is written in the
@@ -925,22 +915,10 @@ export function FocusStats({
   };
 
   const hours = figures?.hours ?? [];
+  // The strongest hour of the day, read across the whole log at once: every
+  // date's slice in that hour is already summed into one cell, so the reading
+  // names an hour and nothing narrower.
   const peak = peakHour(hours);
-  // The strongest hour is an hour-of-day read across every week, so the day it
-  // names comes off the heat grid: the weekday whose cell in that hour column
-  // holds the most. Ties share the line.
-  const peakDays =
-    peak === null || figures === null
-      ? []
-      : (() => {
-          const column = figures.heat.map((row) => row[peak]);
-          const best = Math.max(...column);
-          if (best <= 0) return [];
-          return column.flatMap((ms, index) => (ms === best ? [index] : []));
-        })();
-  const peakDayNames = weekdayNames(language)
-    .filter((_, index) => peakDays.includes(index))
-    .join(language === "zh" ? "、" : ", ");
   const dayUseful =
     buckets === null || view === null ? 0 : (buckets.get(view)?.useful ?? 0);
   const onToday = figures !== null && view !== null && view === figures.today;
@@ -1752,7 +1730,6 @@ export function FocusStats({
                         {peak === null
                           ? t("focus.log.when.none")
                           : t("focus.log.when.peak", {
-                              days: peakDayNames,
                               from: hourName(peak, language),
                               to: hourName(peak + 1, language),
                               value: duration(hours[peak], language),
