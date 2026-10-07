@@ -60,6 +60,11 @@ export interface AppSettings {
       leaves the webview. Off by default: the hints are how the app teaches its
       own shortcuts, so doing without them is a choice its reader makes. */
   hideShortcutHints: boolean;
+  /** The expanded sidebar's width, in pixels — dragged by its right edge rather
+      than chosen from a list, so it lives here as the number the drag commits.
+      The collapsed rail ignores it: a 56px square column is one decision, not
+      a scale of it. */
+  sidebarWidth: number;
 }
 
 const STORAGE_KEY = "orkest-settings.v1";
@@ -77,6 +82,13 @@ export const DEFAULT_WIDGET_OPACITY = 100;
     clicks in the corner of the screen — that reads as a broken app, not as a
     setting someone made. */
 export const MIN_WIDGET_OPACITY = 20;
+
+/** The expanded sidebar's shipped width, and the band its drag handle lives in.
+    The floor keeps a row's label legible next to its count; the ceiling stops
+    the sidebar from crowding out the task list on a wider window. */
+export const DEFAULT_SIDEBAR_WIDTH = 264;
+export const MIN_SIDEBAR_WIDTH = 200;
+export const MAX_SIDEBAR_WIDTH = 380;
 
 const DEFAULTS: AppSettings = {
   hiddenViews: {
@@ -97,6 +109,7 @@ const DEFAULTS: AppSettings = {
   // Parking in the tray is the habit of a background resident, and it has to be
   // asked for: the tray icon is not where most people look for a running app.
   closeToTray: false,
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
 };
 
 /** One number out of a file someone may have hand-edited: anything that is not
@@ -147,6 +160,9 @@ function load(): AppSettings {
       hideShortcutHints: bool(
         parsed.hideShortcutHints,
         DEFAULTS.hideShortcutHints
+      ),
+      sidebarWidth: Math.round(
+        num(parsed.sidebarWidth, DEFAULTS.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
       ),
     };
   } catch {
@@ -229,6 +245,12 @@ export function useSettings() {
     setSettings((s) => ({ ...s, hideShortcutHints }));
   }, []);
 
+  /** Written once, on the release of a drag rather than on every pointermove —
+      the caller holds the live value for the duration of the gesture. */
+  const setSidebarWidth = useCallback((sidebarWidth: number) => {
+    setSettings((s) => ({ ...s, sidebarWidth }));
+  }, []);
+
   return {
     settings,
     setViewVisible,
@@ -238,5 +260,6 @@ export function useSettings() {
     setCloseToTray,
     setGlobalShortcuts,
     setHideShortcutHints,
+    setSidebarWidth,
   };
 }

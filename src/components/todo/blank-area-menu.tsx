@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import {
   ArrowDownWideNarrow,
   Check,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Flag,
   ListFilter,
   Plus,
@@ -72,6 +74,13 @@ export interface BlankAreaMenuProps {
       whichever surface issues them. */
   onChange: (patch: Partial<Filters>) => void;
   onCreate: () => void;
+  /** The list's expand/collapse-all toggle, as the one row it is: with any card
+      open the row offers to close them all, and with none open it offers to
+      open them all. `anyExpanded` decides which — the same boolean the caller
+      already derives from the list it is about to reshape. */
+  anyExpanded: boolean;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
   children: ReactNode;
 }
 
@@ -99,6 +108,9 @@ export function BlankAreaMenu({
   tags,
   onChange,
   onCreate,
+  anyExpanded,
+  onExpandAll,
+  onCollapseAll,
   children,
 }: BlankAreaMenuProps) {
   const { t } = useI18n();
@@ -111,6 +123,20 @@ export function BlankAreaMenu({
         <ContextMenuItem onSelect={onCreate}>
           <Icon icon={Plus} size="sm" />
           {t("app.newTask")}
+        </ContextMenuItem>
+
+        <ContextMenuSeparator />
+
+        {/* The list's own shape — every card opened or closed at once. The rows
+            carry the same two verbs per task; this is the same pair over the
+            whole list, which is what a right-click on the space between them is
+            good for. Only one of the two is ever worth offering: with a card
+            already open the list reads "close them all", and with none open
+            "open them all" — two rows would make the reader work out which one
+            is the no-op. */}
+        <ContextMenuItem onSelect={anyExpanded ? onCollapseAll : onExpandAll}>
+          <Icon icon={anyExpanded ? ChevronsDownUp : ChevronsUpDown} size="sm" />
+          {anyExpanded ? t("blank.collapseAll") : t("blank.expandAll")}
         </ContextMenuItem>
 
         <ContextMenuSeparator />

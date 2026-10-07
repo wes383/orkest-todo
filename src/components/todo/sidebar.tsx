@@ -49,6 +49,8 @@ import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import {
   HIDEABLE_VIEWS,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
   type AppSettings,
   type HideableView,
 } from "@/lib/settings";
@@ -95,10 +97,11 @@ const rowActive = "bg-hover-bg-strong font-medium text-foreground";
 const rowIdleText = "text-foreground-muted";
 const rowActiveText = "font-medium text-foreground";
 
-/** Expanded rail width and the collapsed one. The collapsed value is one
-    decision, not two: the aside's own padding and the row's fixed `w-9` only
-    put the icon on the centre line at this width. */
-const widthExpanded = "w-[264px]";
+/** The collapsed rail's width. The expanded width is not a class: it is the
+    number the user drags by the right edge (`settings.sidebarWidth`), applied
+    as an inline style on the wrapper. The collapsed value is one decision, not
+    two: the aside's own padding and the row's fixed `w-9` only put the icon on
+    the centre line at this width. */
 const widthCollapsed = "w-14";
 
 /**
@@ -223,6 +226,8 @@ export interface SidebarProps {
   onCreateList: () => void;
   onEditList: (list: TodoList) => void;
   onDeleteList: (list: TodoList) => void;
+  /** Commits a dragged width to the settings — written once, on release. */
+  onResizeSidebar: (width: number) => void;
 }
 
 export function Sidebar({
@@ -243,6 +248,7 @@ export function Sidebar({
   onCreateList,
   onEditList,
   onDeleteList,
+  onResizeSidebar,
 }: SidebarProps) {
   const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<TodoList | null>(null);
@@ -253,6 +259,58 @@ export function Sidebar({
    * reload brings the sidebar back at full width.
    */
   const [collapsed, setCollapsed] = useState(false);
+
+  /*
+   * The width the pointer is dragging the edge to, live, for the duration of the
+   * gesture only. Held apart from the setting so a drag does not serialise the
+   * whole settings blob to localStorage on every pointermove; the value is
+   * committed once, on release. While it is non-null the width transition is
+   * off, so the edge tracks the pointer instead of easing behind it.
+   */
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const width = dragWidth ?? settings.sidebarWidth;
+  const resizing = dragWidth !== null;
+
+  /** Pull a proposed width into the band the handle is allowed to travel. */
+  const clampWidth = (w: number) =>
+    Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, Math.round(w)));
+
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const startX = e.clientX;
+    const startWidth = width;
+    // Capture routes every move and the release here even after the pointer
+    // has left the 8px strip — a fast flick sideways still finishes the drag.
+    handle.setPointerCapture(e.pointerId);
+    setDragWidth(startWidth);
+
+    let current = startWidth;
+    const move = (ev: PointerEvent) => {
+      current = clampWidth(startWidth + (ev.clientX - startX));
+      setDragWidth(current);
+    };
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      onResizeSidebar(current);
+      setDragWidth(null);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+
+  /** The same handle without a pointer: arrows nudge, and the setting is
+      committed on each press — a key repeat is a drag the user can see. */
+  const onResizeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step =
+      e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    onResizeSidebar(clampWidth(width + step));
+  };
 
   /*
    * The last list cannot be deleted. Quick-add needs a list to file a task
@@ -278,12 +336,17 @@ export function Sidebar({
     collapsed ? undefined : active ? rowActiveText : rowIdleText;
 
   return (
-    <aside
-      className={cn(
-        "no-select flex shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar transition-[width] duration-slow ease-out",
-        collapsed ? widthCollapsed : widthExpanded
-      )}
-    >
+    <>
+      <aside
+        style={collapsed ? undefined : { width }}
+        className={cn(
+          "no-select flex shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar ease-out",
+          // Off for the length of a drag only: the edge has to track the
+          // pointer rather than ease a fifth of a second behind it.
+          !resizing && "transition-[width] duration-slow",
+          collapsed && widthCollapsed
+        )}
+      >
       <ScrollArea className="flex-1">
         <div
           className={cn(
@@ -795,6 +858,41 @@ export function Sidebar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </aside>
+      </aside>
+
+      {/*
+       * The width's drag handle. A real flex item — an 8px strip — pulled back
+       * over the list with `-mr-2`, so it costs the main area nothing while
+       * still sitting on the row's seam, to the right of the border. `z-20`
+       * lifts it over the main area, whose own left padding is where it lands,
+       * which is also why it never covers the sidebar's scrollbar: it starts at
+       * the border, not inside the column.
+       *
+       * The strip is invisible; what announces it is the cursor — the plain
+       * left-right arrow (`ew-resize`, not `col-resize`: the latter carries a
+       * vertical bar that reads as a table-column divider) — and the hairline
+       * the border takes on while the seam is hovered or dragged.
+       */}
+      {!collapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("sidebar.resize")}
+          aria-valuenow={width}
+          aria-valuemin={MIN_SIDEBAR_WIDTH}
+          aria-valuemax={MAX_SIDEBAR_WIDTH}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onKeyDown={onResizeKeyDown}
+          className={cn(
+            "relative -mr-2 z-20 w-2 shrink-0 cursor-ew-resize touch-none",
+            "after:absolute after:inset-y-0 after:left-0 after:w-px after:transition-colors focus-visible:outline-none",
+            resizing
+              ? "after:bg-accent"
+              : "after:bg-transparent hover:after:bg-border-strong"
+          )}
+        />
+      )}
+    </>
   );
 }

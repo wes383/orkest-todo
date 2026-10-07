@@ -1,7 +1,9 @@
-import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import {
   CalendarClock,
   CalendarDays,
+  ChevronsDownUp,
+  ChevronsUpDown,
   CircleDashed,
   Copy,
   ListChecks,
@@ -60,6 +62,11 @@ export interface TodoItemProps {
   list: TodoList | undefined;
   /** Shown when the current view already spans multiple lists. */
   showList: boolean;
+  /** Whether the detail panel is open. Owned by the list, not the card: the
+      rows are windowed, so a card scrolled out of view unmounts and would
+      forget a state of its own — and 展开全部 has to survive exactly that. */
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onToggle: () => void;
   onStar: () => void;
   onToggleSubtask: (subtaskId: string) => void;
@@ -113,6 +120,8 @@ export function TodoItem({
   todo,
   list,
   showList,
+  expanded,
+  onToggleExpanded,
   onToggle,
   onStar,
   onToggleSubtask,
@@ -123,7 +132,6 @@ export function TodoItem({
   onSetDue,
 }: TodoItemProps) {
   const { t, language } = useI18n();
-  const [expanded, setExpanded] = useState(false);
 
   const priority = PRIORITY_META[todo.priority];
   const tone = dueTone(todo.dueDate, todo.done);
@@ -146,6 +154,13 @@ export function TodoItem({
       identical set, and can never drift apart. */
   const menuItems = (M: MenuParts) => (
     <>
+      {/* The card's own shape, and so the menu's first row: the title does the
+          same thing, but a right-click that already found the card should not
+          have to be followed by a hunt for its text. */}
+      <M.Item onSelect={onToggleExpanded}>
+        <Icon icon={expanded ? ChevronsDownUp : ChevronsUpDown} size="sm" />
+        {expanded ? t("todo.collapse") : t("todo.expand")}
+      </M.Item>
       <M.Item onSelect={onEdit}>
         <Icon icon={Pencil} size="sm" />
         {t("todo.edit")}
@@ -313,7 +328,7 @@ export function TodoItem({
 
             <button
               type="button"
-              onClick={() => setExpanded((v) => !v)}
+              onClick={onToggleExpanded}
               aria-expanded={expanded}
               className={cn(
                 "min-w-0 flex-1 text-left",

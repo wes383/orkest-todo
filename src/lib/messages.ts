@@ -151,6 +151,7 @@ const zh = {
     "这是最后一个清单，至少要保留一个。可以先新建一个清单，再来删除它。",
   "sidebar.collapse": "收起侧边栏",
   "sidebar.expand": "展开侧边栏",
+  "sidebar.resize": "拖动调整宽度",
 
   /* ── Lists ───────────────────────────────────────────────── */
   "list.untitled": "未命名清单",
@@ -282,6 +283,8 @@ const zh = {
   "blank.filterStatus": "筛选状态",
   "blank.filterPriority": "筛选优先级",
   "blank.filterTag": "筛选标签",
+  "blank.expandAll": "展开全部任务",
+  "blank.collapseAll": "收起全部任务",
   "toolbar.filterAria": "筛选",
   "toolbar.filter": "筛选",
   "toolbar.clearAllFilters": "清除全部筛选",
@@ -291,6 +294,8 @@ const zh = {
   "todo.markComplete": "完成任务：{title}",
   "todo.star": "加星",
   "todo.unstar": "取消加星",
+  "todo.expand": "展开任务",
+  "todo.collapse": "收起任务",
   "todo.actions": "任务操作",
   "todo.edit": "编辑任务",
   "todo.duplicate": "复制一份",
@@ -718,6 +723,7 @@ const en: Record<MessageKey, Message> = {
     "This is the last list, and at least one has to stay. Create another list first, then delete this one.",
   "sidebar.collapse": "Collapse sidebar",
   "sidebar.expand": "Expand sidebar",
+  "sidebar.resize": "Drag to resize",
 
   /* ── Lists ───────────────────────────────────────────────── */
   "list.untitled": "Untitled list",
@@ -849,6 +855,8 @@ const en: Record<MessageKey, Message> = {
   "blank.filterStatus": "Filter by status",
   "blank.filterPriority": "Filter by priority",
   "blank.filterTag": "Filter by tag",
+  "blank.expandAll": "Expand all tasks",
+  "blank.collapseAll": "Collapse all tasks",
   "toolbar.filterAria": "Filters",
   "toolbar.filter": "Filter",
   "toolbar.clearAllFilters": "Clear all filters",
@@ -858,6 +866,8 @@ const en: Record<MessageKey, Message> = {
   "todo.markComplete": "Complete task: {title}",
   "todo.star": "Star",
   "todo.unstar": "Unstar",
+  "todo.expand": "Expand task",
+  "todo.collapse": "Collapse task",
   "todo.actions": "Task actions",
   "todo.edit": "Edit task",
   "todo.duplicate": "Duplicate",

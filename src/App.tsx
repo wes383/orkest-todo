@@ -152,6 +152,7 @@ export default function App() {
     setCloseToTray,
     setGlobalShortcuts,
     setHideShortcutHints,
+    setSidebarWidth,
   } = useSettings();
 
   /*
@@ -184,6 +185,26 @@ export default function App() {
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /*
+   * Which cards have their detail panel open. Held here rather than inside each
+   * card because the list is windowed: a card scrolled out of view unmounts, and
+   * a state of its own would be forgotten on the way back — which 展开全部, the
+   * whole point of which is to survive scrolling, cannot afford. Ids are the
+   * vocabulary, so a filter change simply stops mentioning the ones it hides;
+   * the set keeps them for the next time the view brings them back.
+   */
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // The OS-wide chord, live only while the setting says so — the registration
   // is a claim on the OS, so it must die the moment the switch flips off.
@@ -823,6 +844,7 @@ export default function App() {
             setListDialogOpen(true);
           }}
           onDeleteList={handleListDelete}
+          onResizeSidebar={setSidebarWidth}
         />
 
         {/*
@@ -940,6 +962,9 @@ export default function App() {
             tags={tags}
             onChange={patchFilters}
             onCreate={openCreate}
+            anyExpanded={visible.some((v) => expandedIds.has(v.id))}
+            onExpandAll={() => setExpandedIds(new Set(visible.map((v) => v.id)))}
+            onCollapseAll={() => setExpandedIds(new Set())}
           >
             <ScrollArea className="flex-1">
             <div className="mx-auto flex w-full max-w-[880px] flex-col gap-3 px-6 py-4">
@@ -962,6 +987,8 @@ export default function App() {
                       todo={todo}
                       list={listById.get(todo.listId)}
                       showList={showRowList}
+                      expanded={expandedIds.has(todo.id)}
+                      onToggleExpanded={() => toggleExpanded(todo.id)}
                       onToggle={() => handleToggle(todo.id)}
                       onStar={() => toggleStar(todo.id)}
                       onToggleSubtask={(subId) =>
