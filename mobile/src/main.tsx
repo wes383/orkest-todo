@@ -7,13 +7,13 @@ import { createRoot } from "react-dom/client";
  * half the design. @fontsource halves them into unicode-range subsets, so the
  * phone downloads the slices it paints and nothing else.
  *
- *   Inter           → --font-inter           (UI body text)
- *   Manrope         → --font-manrope         (display face: headings)
- *   JetBrains Mono  → --font-jetbrains-mono  (the clock, the sync code)
- *   Noto Sans SC    → --font-noto-sans-sc    (CJK glyphs / Source Han Sans)
+ *   Inter             → --font-inter             (UI body text)
+ *   Plus Jakarta Sans → --font-plus-jakarta-sans (display face: headings)
+ *   JetBrains Mono    → --font-jetbrains-mono    (the clock, the sync code)
+ *   Noto Sans SC      → --font-noto-sans-sc      (CJK glyphs / Source Han Sans)
  */
 import "@fontsource-variable/inter";
-import "@fontsource-variable/manrope";
+import "@fontsource-variable/plus-jakarta-sans";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/noto-sans-sc";
 

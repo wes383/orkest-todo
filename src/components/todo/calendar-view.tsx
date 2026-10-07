@@ -98,8 +98,8 @@ import {
    `CalendarView`), so the count cannot drift from the styles. These are the
    fallbacks for the first paint, before anything has been measured, and
    must agree with the classes below: a chip is `text-xs leading-5` (20) with
-   `py-0.5` (4), the chips column is `gap-1`, the date row is `h-6`, the cell
-   pads `p-1.5`, and the "+N" row is a chip's line box without the padding. */
+   `py-0.5` (4), the chips column is `gap-1`, the date row is `h-5`, the cell
+   pads `p-1`, and the "+N" row is a chip's line box without the padding. */
 const CHIP_H = 24;
 /** Between two chips. The chips wear `py-0.5`, so the eye still reads a 6px
     break between one task and the next. */
@@ -107,7 +107,7 @@ const CHIP_GAP = 2;
 /** The cell's own gap: the date row to the chips under it. */
 const ROW_GAP = 4;
 const MORE_H = 16;
-const DATE_ROW_H = 24;
+const DATE_ROW_H = 20;
 /** What a day shows before the first measurement lands, and the ceiling —
     eight of anything in one cell stops being a glance. */
 const MAX_VISIBLE = 3;
@@ -965,7 +965,7 @@ export function CalendarView({
                   endDrag();
                 }}
                 className={cn(
-                  "group flex min-h-0 flex-col gap-1 overflow-hidden p-1.5 transition-colors duration-base",
+                  "group flex min-h-0 flex-col gap-1 overflow-hidden p-1 transition-colors duration-base",
                   inMonth ? "bg-background" : "bg-muted/50",
                   dropIso === iso &&
                     draggingId !== null &&
@@ -978,7 +978,7 @@ export function CalendarView({
                 >
                   <span
                     className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs tabular-nums",
+                      "flex h-5 w-5 items-center justify-center rounded-full text-xs tabular-nums",
                       iso === today
                         ? "bg-foreground font-semibold text-background"
                         : inMonth

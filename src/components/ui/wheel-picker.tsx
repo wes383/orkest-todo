@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useDensity } from "@/components/density-provider";
 
 /**
  * WheelPicker — iOS-style wheel picker primitive (supports infinite looping).
@@ -23,6 +24,13 @@ import { cn } from "@/lib/utils";
 const REPEAT = 21;
 const MID_OFFSET = Math.floor(REPEAT / 2);
 
+/** Row height per density, used when the caller does not pass an explicit `itemHeight`. */
+const WHEEL_ITEM_HEIGHT_FOR_DENSITY = {
+  compact: 28,
+  default: 36,
+  comfortable: 44,
+} as const;
+
 export interface WheelPickerItem {
   value: string | number;
   label: string;
@@ -34,7 +42,7 @@ export interface WheelPickerProps
   items: WheelPickerItem[];
   value: string | number;
   onChange: (value: string | number) => void;
-  /** Height of a single item (px). @default 36 */
+  /** Height of a single item (px). Defaults to the density tier (28 / 36 / 44). */
   itemHeight?: number;
   /** Number of visible rows; must be odd. @default 5 */
   visibleCount?: number;
@@ -48,13 +56,16 @@ export function WheelPicker({
   items,
   value,
   onChange,
-  itemHeight = 36,
+  itemHeight: itemHeightProp,
   visibleCount: visibleCountProp = 5,
   loop = true,
   className,
   "aria-label": ariaLabel,
   ...props
 }: WheelPickerProps) {
+  const density = useDensity();
+  const itemHeight = itemHeightProp ?? WHEEL_ITEM_HEIGHT_FOR_DENSITY[density];
+
   // Must be odd so a single item can sit exactly in the middle; a stray even
   // count is corrected rather than argued with.
   const visibleCount = visibleCountProp % 2 === 0 ? visibleCountProp + 1 : visibleCountProp;
@@ -330,7 +341,12 @@ export function WheelPicker({
               aria-selected={isSelected}
               aria-disabled={item.disabled || undefined}
               className={cn(
-                "flex cursor-pointer items-center justify-center text-center text-sm font-medium transition-colors",
+                "flex cursor-pointer items-center justify-center text-center font-medium transition-colors",
+                density === "compact"
+                  ? "text-xs"
+                  : density === "comfortable"
+                  ? "text-base"
+                  : "text-sm",
                 isSelected ? "text-foreground" : "text-foreground-muted",
                 item.disabled && "cursor-not-allowed"
               )}

@@ -59,7 +59,7 @@ export function ListDialog({
           <DialogDescription>{t("listDialog.description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-5 px-7 pb-6 pt-4">
+        <div className="flex flex-col gap-4 px-7 pb-5 pt-4">
           <div>
             <Label htmlFor="list-name">{t("listDialog.nameLabel")}</Label>
             <Input
@@ -112,7 +112,7 @@ export function ListDialog({
 
           <div>
             <SubsectionLabel>{t("listDialog.preview")}</SubsectionLabel>
-            <div className="mt-2 flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-3">
+            <div className="mt-2 flex items-center gap-2.5 rounded-lg border border-border bg-background px-3.5 py-2.5">
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: paletteVar(color) }}

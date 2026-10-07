@@ -275,7 +275,7 @@ export function DayRail({
                 hovered.left + hovered.width / 2
               }%, calc(100% - 5rem))`,
             }}
-            className="pointer-events-none absolute bottom-full mb-6 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border bg-surface px-3 py-2 text-center text-sm font-normal leading-snug tracking-normal text-foreground shadow-md"
+            className="pointer-events-none absolute bottom-full mb-5 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-center text-xs font-normal leading-snug tracking-normal text-foreground shadow-md"
           >
             {t("focus.rail.band", {
               from: clockLabel(hovered.start, language),

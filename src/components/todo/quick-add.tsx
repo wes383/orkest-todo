@@ -163,8 +163,8 @@ export function QuickAdd({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface p-1.5 pl-3.5 transition-colors duration-base ease-out focus-within:border-border-strong">
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5 rounded-lg border border-border bg-surface p-1 pl-3 transition-colors duration-base ease-out focus-within:border-border-strong">
         <Icon icon={Plus} size="sm" className="text-foreground-subtle" />
 
         <div className="relative min-w-0 flex-1">

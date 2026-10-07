@@ -5,22 +5,22 @@ import ReactDOM from "react-dom/client";
  * Self-hosted webfonts — the exact families orkest-ui loads through
  * `next/font/google` (see its app/layout.tsx):
  *
- *   Inter            → --font-inter            (UI body text)
- *   Manrope          → --font-manrope          (display face: headings + numerals)
- *   JetBrains Mono   → --font-jetbrains-mono   (code, shortcuts, tabular figures)
- *   Noto Sans SC     → --font-noto-sans-sc     (CJK glyphs / Source Han Sans)
+ *   Inter             → --font-inter             (UI body text)
+ *   Plus Jakarta Sans → --font-plus-jakarta-sans (display face: headings + numerals)
+ *   JetBrains Mono    → --font-jetbrains-mono    (code, shortcuts, tabular figures)
+ *   Noto Sans SC      → --font-noto-sans-sc      (CJK glyphs / Source Han Sans)
  *
  * next/font only exists inside Next.js, so without these imports the
- * `var(--font-manrope, 'Manrope')` stack in globals.css resolved to nothing and
- * every glyph silently fell through to the system CJK font — which is why the
- * stat numerals did not render as Manrope.
+ * `var(--font-plus-jakarta-sans, 'Plus Jakarta Sans')` stack in globals.css
+ * resolved to nothing and every glyph silently fell through to the system CJK
+ * font — which is why the stat numerals did not render as the display face.
  *
  * @fontsource ships variable fonts split into unicode-range subsets, so the
  * browser downloads only the slices a screen actually uses, and everything is
  * bundled locally (the Tauri shell has no guaranteed network access).
  */
 import "@fontsource-variable/inter";
-import "@fontsource-variable/manrope";
+import "@fontsource-variable/plus-jakarta-sans";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/noto-sans-sc";
 

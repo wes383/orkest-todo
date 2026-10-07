@@ -4,12 +4,16 @@ import * as React from "react";
 import { DayPicker, useDayPicker } from "react-day-picker";
 import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDensity, type Density } from "@/components/density-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+/** Density tiers for the calendar grid and caption chrome. */
+export type CalendarDensity = Density;
 
 /**
  * A type alias, not an `interface … extends`: `React.ComponentProps` of a
@@ -27,18 +31,52 @@ export type CalendarProps = React.ComponentProps<typeof DayPicker> & {
    * through `Intl` instead, which needs a tag and nothing else.
    */
   intlLocale?: string;
+  /** Grid density. Falls back to the surrounding density, then to "default". */
+  density?: CalendarDensity;
 };
+
+/** Day-cell and spacing geometry per density. */
+const calendarSizing = {
+  compact: {
+    shell: "p-1.5",
+    dayButton: "h-7 w-7 text-xs",
+    week: "mt-0.5",
+    captionLabel: "text-xs",
+    navButton: "h-5 w-5",
+    navIcon: "h-3.5 w-3.5",
+    captionTrigger: "gap-0.5 rounded px-0.5 py-px text-xs",
+  },
+  default: {
+    shell: "p-2",
+    dayButton: "h-8 w-8 text-sm",
+    week: "mt-1",
+    captionLabel: "text-sm",
+    navButton: "h-6 w-6",
+    navIcon: "h-4 w-4",
+    captionTrigger: "gap-0.5 rounded px-1 py-0.5 text-sm",
+  },
+  comfortable: {
+    shell: "p-3",
+    dayButton: "h-9 w-9 text-sm",
+    week: "mt-1.5",
+    captionLabel: "text-sm",
+    navButton: "h-7 w-7",
+    navIcon: "h-4 w-4",
+    captionTrigger: "gap-0.5 rounded px-1 py-0.5 text-sm",
+  },
+} as const;
 
 /**
  * Everything the caption needs that `DayPicker`'s own props cannot carry: the
- * portal target for the month/year dropdowns, and the locale to name months in
- * — `CalendarMonthCaption` is rendered by the library, so its inputs have to
- * arrive by context.
+ * portal target for the month/year dropdowns, the locale to name months in,
+ * and the resolved density — `CalendarMonthCaption` is rendered by the
+ * library, so its inputs have to arrive by context.
  */
 const CalendarContext = React.createContext<{
   container: HTMLElement | null;
   intlLocale: string;
-}>({ container: null, intlLocale: "en" });
+  density: CalendarDensity;
+}>({ container: null, intlLocale: "en", density: "default" });
 
 /**
  * Month names come from `Intl`, so the caption is localised without a word of
@@ -72,8 +110,12 @@ function CalendarMonthCaption({
   displayIndex: number;
 } & React.HTMLAttributes<HTMLDivElement>) {
   const { months, goToMonth, dayPickerProps } = useDayPicker();
-  const { container: dropdownMenuContainer, intlLocale } =
-    React.useContext(CalendarContext);
+  const {
+    container: dropdownMenuContainer,
+    intlLocale,
+    density,
+  } = React.useContext(CalendarContext);
+  const sizing = calendarSizing[density];
   const isZh = intlLocale.toLowerCase().startsWith("zh");
   const date = calendarMonth.date;
 
@@ -119,7 +161,8 @@ function CalendarMonthCaption({
    * (`DropdownMenuItem`, `day_button`).
    */
   const captionButtonClass = cn(
-    "inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-sm font-medium font-display text-foreground",
+    "inline-flex items-center font-medium font-display text-foreground",
+    sizing.captionTrigger,
     "transition-colors duration-base hover:bg-hover-bg",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
   );
@@ -139,15 +182,16 @@ function CalendarMonthCaption({
           disabled={prevDisabled}
           onClick={() => goToMonth(prevMonth)}
           className={cn(
-            "inline-flex h-6 w-6 items-center justify-center text-foreground-muted transition-colors duration-base",
+            "inline-flex items-center justify-center text-foreground-muted transition-colors duration-base",
+            sizing.navButton,
             "hover:text-foreground",
             "disabled:pointer-events-none disabled:opacity-30"
           )}
         >
-          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          <ChevronLeft className={sizing.navIcon} aria-hidden="true" />
         </button>
       ) : (
-        <span className="inline-flex h-6 w-6" aria-hidden="true" />
+        <span className={cn("inline-flex", sizing.navButton)} aria-hidden="true" />
       )}
 
       <DropdownMenu open={monthOpen} onOpenChange={setMonthOpen}>
@@ -211,15 +255,16 @@ function CalendarMonthCaption({
           disabled={nextDisabled}
           onClick={() => goToMonth(nextMonth)}
           className={cn(
-            "inline-flex h-6 w-6 items-center justify-center text-foreground-muted transition-colors duration-base",
+            "inline-flex items-center justify-center text-foreground-muted transition-colors duration-base",
+            sizing.navButton,
             "hover:text-foreground",
             "disabled:pointer-events-none disabled:opacity-30"
           )}
         >
-          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          <ChevronRight className={sizing.navIcon} aria-hidden="true" />
         </button>
       ) : (
-        <span className="inline-flex h-6 w-6" aria-hidden="true" />
+        <span className={cn("inline-flex", sizing.navButton)} aria-hidden="true" />
       )}
     </div>
   );
@@ -233,6 +278,7 @@ export const Calendar = React.forwardRef<HTMLDivElement, CalendarProps>(
       showOutsideDays = true,
       components,
       intlLocale = "en",
+      density,
       formatters,
       ...props
     },
@@ -248,6 +294,10 @@ export const Calendar = React.forwardRef<HTMLDivElement, CalendarProps>(
      */
     const [dropdownMenuContainer, setDropdownMenuContainer] =
       React.useState<HTMLDivElement | null>(null);
+
+    const globalDensity = useDensity();
+    const resolvedDensity = density ?? globalDensity;
+    const sizing = calendarSizing[resolvedDensity];
 
     const handleRootRef = React.useCallback(
       (node: HTMLDivElement | null) => {
@@ -280,7 +330,7 @@ export const Calendar = React.forwardRef<HTMLDivElement, CalendarProps>(
 
     return (
       <CalendarContext.Provider
-        value={{ container: dropdownMenuContainer, intlLocale }}
+        value={{ container: dropdownMenuContainer, intlLocale, density: resolvedDensity }}
       >
         {/*
          * No `react-day-picker/style.css` import anywhere in this project — as
@@ -290,7 +340,8 @@ export const Calendar = React.forwardRef<HTMLDivElement, CalendarProps>(
         <div
           ref={handleRootRef}
           className={cn(
-            "rounded-lg border border-border bg-surface p-2 shadow-pop",
+            "rounded-lg border border-border bg-surface shadow-pop",
+            sizing.shell,
             className
           )}
         >
@@ -300,18 +351,19 @@ export const Calendar = React.forwardRef<HTMLDivElement, CalendarProps>(
               months: "flex flex-col sm:flex-row gap-2",
               month: "flex flex-col gap-1",
               month_caption: "px-1",
-              caption_label: "text-sm font-medium font-display",
+              caption_label: cn("font-medium font-display", sizing.captionLabel),
               nav: "hidden",
               button_previous: "hidden",
               button_next: "hidden",
               month_grid: "w-full border-collapse",
               weekdays: "flex",
               weekday: "flex-1 text-xs font-medium tracking-wide text-foreground-muted text-center py-0.5",
-              week: "flex w-full mt-1",
+              week: cn("flex w-full", sizing.week),
               // No overflow-hidden: would clip range_middle connector bars.
               day: "flex-1 p-0 rounded-md",
               day_button: cn(
-                "h-8 w-8 mx-auto rounded-md text-sm hover:bg-hover-bg focus:bg-hover-bg transition-colors duration-base ease-out",
+                "mx-auto rounded-md hover:bg-hover-bg focus:bg-hover-bg transition-colors duration-base ease-out",
+                sizing.dayButton,
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "data-[disabled=true]:opacity-40 data-[disabled=true]:pointer-events-none"
               ),

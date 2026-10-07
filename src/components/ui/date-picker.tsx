@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useDensity, type Density } from "@/components/density-provider";
 
 export type DatePickerMode = "single" | "range";
 
@@ -33,7 +34,7 @@ export interface DatePickerProps {
   disabledDates?: Date[];
   shortcuts?: DatePickerShortcut[];
   placeholder?: string;
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
   disabled?: boolean;
   className?: string;
   contentClassName?: string;
@@ -41,6 +42,21 @@ export interface DatePickerProps {
   intlLocale?: string;
   "aria-label"?: string;
 }
+
+/** Trigger geometry per size tier; radius lives here so the h-8 compact field stays a rounded rect. */
+const DATE_PICKER_TRIGGER_SIZE: Record<"xs" | "sm" | "md" | "lg", string> = {
+  xs: "h-8 rounded-md text-xs",
+  sm: "h-10 rounded-lg",
+  md: "h-12 rounded-lg",
+  lg: "h-14 rounded-lg",
+};
+
+/** Trigger size used when `size` is omitted, derived from the global density. */
+const DATE_PICKER_SIZE_FOR_DENSITY: Record<Density, "xs" | "sm" | "md" | "lg"> = {
+  compact: "xs",
+  default: "md",
+  comfortable: "lg",
+};
 
 /**
  * The handful of strings this component owns.
@@ -197,7 +213,7 @@ export const DatePicker = React.forwardRef<HTMLInputElement, DatePickerProps>(
       disabledDates,
       shortcuts,
       placeholder,
-      size = "md",
+      size,
       disabled,
       className,
       contentClassName,
@@ -206,6 +222,9 @@ export const DatePicker = React.forwardRef<HTMLInputElement, DatePickerProps>(
     },
     ref
   ) => {
+    const globalDensity = useDensity();
+    const resolvedSize = size ?? DATE_PICKER_SIZE_FOR_DENSITY[globalDensity];
+
     /*
      * Falls back to `<html lang>`, which the app keeps in step with the chosen
      * language — so an unconfigured `DatePicker` still localises itself, and a
@@ -307,8 +326,7 @@ export const DatePicker = React.forwardRef<HTMLInputElement, DatePickerProps>(
     const displayValue = formatDate(value ?? undefined, mode, locale);
 
     // Mirrors `inputVariants.size` so the trigger lines up with a real Input.
-    const heightClass =
-      size === "sm" ? "h-10" : size === "lg" ? "h-14" : "h-12";
+    const sizeClass = DATE_PICKER_TRIGGER_SIZE[resolvedSize];
 
     type DayPickerProps = React.ComponentProps<typeof DayPicker>;
 
@@ -338,10 +356,10 @@ export const DatePicker = React.forwardRef<HTMLInputElement, DatePickerProps>(
           <div
             ref={triggerRef}
             className={cn(
-              "relative flex items-center w-full bg-surface border rounded-lg text-base text-foreground transition-colors duration-base cursor-pointer",
+              "relative flex items-center w-full bg-surface border text-foreground transition-colors duration-base cursor-pointer",
               "border-border focus-within:border-border-strong",
               disabled && "bg-hover-bg cursor-not-allowed opacity-60",
-              heightClass,
+              sizeClass,
               className
             )}
             tabIndex={disabled ? -1 : 0}

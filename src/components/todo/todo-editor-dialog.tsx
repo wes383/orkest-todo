@@ -231,9 +231,9 @@ export function TodoEditorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex max-h-[min(60vh,520px)] flex-col gap-6 overflow-y-auto px-7 pb-6 pt-4">
+        <div className="flex max-h-[min(60vh,520px)] flex-col gap-5 overflow-y-auto px-7 pb-5 pt-4">
           {/* Content */}
-          <section className="flex flex-col gap-4">
+          <section className="flex flex-col gap-3">
             <SubsectionLabel>{t("editor.sectionContent")}</SubsectionLabel>
 
             <div>
@@ -264,10 +264,10 @@ export function TodoEditorDialog({
           <Separator />
 
           {/* Scheduling */}
-          <section className="flex flex-col gap-4">
+          <section className="flex flex-col gap-3">
             <SubsectionLabel>{t("editor.sectionSchedule")}</SubsectionLabel>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>{t("common.priority")}</Label>
                 <Select
@@ -476,7 +476,7 @@ export function TodoEditorDialog({
           <Separator />
 
           {/* Breakdown */}
-          <section className="flex flex-col gap-4">
+          <section className="flex flex-col gap-3">
             <SubsectionLabel>{t("editor.sectionBreakdown")}</SubsectionLabel>
 
             <div>
@@ -563,17 +563,17 @@ export function TodoEditorDialog({
                   }}
                 />
                 {/*
-                 * `shrink-0` is load-bearing: `icon` is `h-10 w-10`, so this is
-                 * only a circle while both axes stay at 40px. Tailwind's `Input`
-                 * carries `w-full`, and flex items default to `flex-shrink: 1`,
-                 * so without this the row's overflow was shared between the two
-                 * by base width — the input gave up ~45px and the button ~3px,
-                 * squashing a 40px circle into a ~37×40 oval.
+                 * `icon-xs` is `h-8 w-8` — the same height the input resolves
+                 * to at this app's compact density, so the pair sits on one
+                 * line. `shrink-0` is load-bearing: Tailwind's `Input` carries
+                 * `w-full`, and flex items default to `flex-shrink: 1`, so
+                 * without it the row's overflow would be shared between the
+                 * two and squash the square into an oval.
                  */}
                 <Button
                   type="button"
                   variant="outline"
-                  size="icon"
+                  size="icon-xs"
                   className="shrink-0"
                   aria-label={t("editor.addSubtask")}
                   onClick={addSubtask}
@@ -587,7 +587,7 @@ export function TodoEditorDialog({
                   {form.subtasks.map((sub) => (
                     <li
                       key={sub.id}
-                      className="group flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors duration-base hover:bg-hover-bg"
+                      className="group flex items-center gap-2.5 rounded-md px-2 py-1 transition-colors duration-base hover:bg-hover-bg"
                     >
                       <Checkbox
                         checked={sub.done}

@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useDensity, type Density } from "@/components/density-provider";
 
 /**
  * TimePicker — iOS-style wheel time picker.
@@ -38,12 +39,28 @@ export interface TimePickerProps
   use12Hour?: boolean;
   /** BCP-47 tag for the display format and this component's own copy. */
   intlLocale?: string;
-  /** Size variant of the Popover trigger. */
-  size?: "sm" | "md" | "lg";
+  /** Size variant of the Popover trigger. Omit to follow the global density tier. */
+  size?: "xs" | "sm" | "md" | "lg";
 }
 
-const ITEM_HEIGHT = 36;
+// Row height follows the WheelPicker density default, so the wheel densifies
+// along with the rest of the UI in compact mode.
 const VISIBLE_COUNT = 5;
+
+/** Trigger geometry per size tier; radius lives here so the h-8 compact field stays a rounded rect. */
+const TIME_PICKER_TRIGGER_SIZE: Record<"xs" | "sm" | "md" | "lg", string> = {
+  xs: "h-8 rounded-md text-xs",
+  sm: "h-10 rounded-lg",
+  md: "h-12 rounded-lg",
+  lg: "h-14 rounded-lg",
+};
+
+/** Trigger size used when `size` is omitted, derived from the global density. */
+const TIME_PICKER_SIZE_FOR_DENSITY: Record<Density, "xs" | "sm" | "md" | "lg"> = {
+  compact: "xs",
+  default: "md",
+  comfortable: "lg",
+};
 
 /** `zh` or `en`, resolved the way `DatePicker` resolves its own copy. */
 function pick(locale: string, zh: string, en: string): string {
@@ -90,7 +107,7 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
       onChange,
       minuteStep: minuteStepProp = 1,
       use12Hour: use12HourProp,
-      size = "md",
+      size,
       disabled,
       placeholder,
       intlLocale,
@@ -98,6 +115,9 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
     },
     ref
   ) => {
+    const globalDensity = useDensity();
+    const resolvedSize = size ?? TIME_PICKER_SIZE_FOR_DENSITY[globalDensity];
+
     const minuteStep =
       minuteStepProp > 0 && 60 % minuteStepProp === 0 ? minuteStepProp : 1;
 
@@ -217,8 +237,8 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
 
     const displayValue = formatDisplay(value, use12Hour, locale);
 
-    const heightClass =
-      size === "sm" ? "h-10" : size === "lg" ? "h-14" : "h-12";
+    // Mirrors `inputVariants.size` so the trigger lines up with a real Input.
+    const sizeClass = TIME_PICKER_TRIGGER_SIZE[resolvedSize];
 
     return (
       <Popover open={open} onOpenChange={setOpen}>
@@ -226,11 +246,11 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
           <div
             ref={triggerRef}
             className={cn(
-              "relative flex items-center w-full bg-surface border rounded-lg text-base text-foreground transition-colors duration-base",
+              "relative flex items-center w-full bg-surface border text-foreground transition-colors duration-base",
               "border-border focus-within:border-border-strong",
               disabled && "bg-hover-bg cursor-not-allowed opacity-60",
               "cursor-pointer",
-              heightClass,
+              sizeClass,
               className
             )}
             // Make the div behave like an input: focusable and activatable by a label
@@ -273,7 +293,6 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
               items={hourItems}
               value={use12Hour ? hour12 : hour}
               onChange={handleHourChange}
-              itemHeight={ITEM_HEIGHT}
               visibleCount={VISIBLE_COUNT}
               className="w-12"
             />
@@ -288,7 +307,6 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
               items={minuteItems}
               value={minute}
               onChange={handleMinuteChange}
-              itemHeight={ITEM_HEIGHT}
               visibleCount={VISIBLE_COUNT}
               className="w-12"
             />
@@ -298,7 +316,6 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
                 items={periodItems}
                 value={currentPeriod}
                 onChange={handlePeriodChange}
-                itemHeight={ITEM_HEIGHT}
                 visibleCount={VISIBLE_COUNT}
                 loop={false}
                 className="w-14"

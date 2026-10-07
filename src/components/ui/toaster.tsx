@@ -38,16 +38,40 @@ export type ToastVariant = keyof typeof toastVariants;
  * modifier so our classes win specificity over Sonner's injected styles.
  */
 const sharedToastClassNames = {
+  /**
+   * The right gutter is reserved for the inset close button (see closeButton),
+   * so long text and action buttons never run underneath it.
+   *
+   * Sonner's own defaults are `padding: 16px` and a close button pinned to the
+   * top-left corner; every value below wins because Sonner wraps its rules in
+   * `:where()`, which carries zero specificity.
+   */
   toast:
-    "group bg-surface text-foreground border border-border rounded-lg shadow-pop p-3.5 font-sans",
+    "group bg-surface text-foreground border border-border rounded-lg shadow-pop py-3.5 pl-3.5 pr-12 font-sans",
   title: "text-sm font-semibold",
   description: "text-xs text-foreground-muted",
   actionButton:
     "!bg-accent !text-accent-fg !rounded-full !h-8 !px-3 !text-xs !font-medium hover:!bg-accent-hover",
   cancelButton:
     "!bg-surface !border !border-border !text-foreground !rounded-full !h-8 !px-3 !text-xs !font-medium hover:!bg-hover-bg",
+  /**
+   * Sonner hangs the close button off the top-left corner (LTR: `left: 0` plus
+   * `translate(-35%, -35%)`), where it collides with the leading status icon and
+   * straddles the card border. Keep it inside the card instead — right edge,
+   * vertically centered — and style it after `Dialog`'s close button: a 32px
+   * rounded square with a 16px glyph, no background until hover.
+   *
+   * The geometry overrides (size, radius, offsets, transform) need no `!`
+   * because Sonner declares them inside `:where()`, i.e. at zero specificity.
+   * The background does: Sonner sets it on `[data-sonner-toast] [data-close-button]`
+   * (0-2-0) plus dark-theme (0-3-0) and hover (0-4-0) variants, all of which
+   * outrank a plain utility.
+   *
+   * `left-auto` is required: `left: 0` is set as well, and for an over-constrained
+   * absolutely positioned box the left offset wins over the right one.
+   */
   closeButton:
-    "text-foreground-muted hover:text-foreground hover:bg-hover-bg rounded-md",
+    "absolute right-2 top-1/2 left-auto inline-flex h-8 w-8 items-center justify-center rounded-md border-0 text-foreground-muted hover:text-foreground transition-colors duration-base ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring !bg-transparent hover:!bg-hover-bg [&>svg]:h-4 [&>svg]:w-4 [--toast-close-button-transform:translateY(-50%)]",
 };
 
 /** Sonner's `toast` function with Orkest theme baked in. */

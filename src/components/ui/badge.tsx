@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { useDensity, type Density } from "@/components/density-provider";
 
 const badgeVariants = cva(
   "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors",
@@ -16,6 +17,7 @@ const badgeVariants = cva(
         info: "bg-blue-soft text-blue-fg border border-blue-border",
       },
       size: {
+        xs: "text-[11px] px-1.5 py-px gap-1",
         sm: "text-xs px-2 py-0.5",
         md: "text-sm px-3 py-1",
       },
@@ -27,6 +29,16 @@ const badgeVariants = cva(
   }
 );
 
+/** Size used when no explicit `size` is given, derived from the global density. */
+const BADGE_SIZE_FOR_DENSITY: Record<
+  Density,
+  NonNullable<VariantProps<typeof badgeVariants>["size"]>
+> = {
+  compact: "sm",
+  default: "md",
+  comfortable: "md",
+};
+
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {
@@ -35,8 +47,10 @@ export interface BadgeProps
 
 export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
   ({ className, variant, size, dot = false, children, ...props }, ref) => {
+    const globalDensity = useDensity();
+    const resolvedSize = size ?? BADGE_SIZE_FOR_DENSITY[globalDensity];
     return (
-      <span ref={ref} className={cn(badgeVariants({ variant, size, className }))} {...props}>
+      <span ref={ref} className={cn(badgeVariants({ variant, size: resolvedSize, className }))} {...props}>
         {dot && (
           <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
         )}

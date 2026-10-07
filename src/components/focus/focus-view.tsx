@@ -168,7 +168,7 @@ function SessionList({
   const index = spans.length - 1;
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5">
       <span className="shrink-0 text-xs font-medium tracking-wide text-foreground-muted">
         {t("focus.session.label")}
       </span>
@@ -478,16 +478,16 @@ export function FocusView({
           {/* The session's list. The slot is held open in both states —
               reserving it while idle keeps the switch's words from stepping up
               the moment a session starts. */}
-          <div className="mt-6 flex h-9 items-center justify-center px-6">
+          <div className="mt-5 flex h-9 items-center justify-center px-6">
             {state === "useful" ? (
               <SessionList store={store} lists={lists} />
             ) : null}
           </div>
         </div>
 
-        {/* The element stays even when the hint goes: its `pb-8` is what keeps
+        {/* The element stays even when the hint goes: its `pb-6` is what keeps
             the switch off the band below. */}
-        <p className="shrink-0 px-6 pb-8 text-center text-xs text-foreground-faint">
+        <p className="shrink-0 px-6 pb-6 text-center text-xs text-foreground-faint">
           {!hideShortcutHints && t("focus.keys")}
         </p>
       </div>
@@ -496,7 +496,7 @@ export function FocusView({
           against, as one rail. It owns the whole width, the way it does in the
           reference — no card, no hairline above it, nothing around it but the
           page's own ground. */}
-      <div className="shrink-0 px-6 pb-8">
+      <div className="shrink-0 px-6 pb-6">
         <DayRail spans={store.spans} lists={lists} onOpen={onOpenStats} />
       </div>
     </main>

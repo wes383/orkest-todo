@@ -104,7 +104,7 @@ export function AddSpanDialog({
           <DialogDescription>{t("focusLog.addDesc")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 px-7 py-4">
+        <div className="flex flex-col gap-3 px-7 py-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="add-span-date">{t("focusLog.date")}</Label>
             <DatePicker
@@ -118,7 +118,7 @@ export function AddSpanDialog({
               aria-label={t("focusLog.date")}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="add-span-start">{t("focusLog.start")}</Label>
               <TimePicker

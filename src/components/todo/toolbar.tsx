@@ -43,7 +43,7 @@ const STATUS_TABS: { value: StatusFilter; labelKey: MessageKey }[] = [
 ];
 
 /** One control height across the whole bar keeps the row optically level. */
-const CONTROL = "h-10 text-sm";
+const CONTROL = "h-9 text-sm";
 
 /**
  * A selectable pill. `Button` cannot express this — its variants are all
@@ -150,7 +150,7 @@ export function Toolbar({
   const statusLocked = viewImpliedStatus(filters.view) !== null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-1.5">
       {/*
        * The status segmented control is only rendered in 全部任务.
        *
@@ -176,14 +176,14 @@ export function Toolbar({
            * showcase uses a bare `<TabsList>` for exactly that reason: the
            * floating pill *is* the track. Triggers go full height, and the list
            * drops its `p-1` padding, so the segmented control sits exactly level
-           * with the 40px controls beside it.
+           * with the 36px controls beside it.
            */}
-          <TabsList className="h-10 shrink-0 gap-1 p-0">
+          <TabsList className="h-9 shrink-0 gap-1 p-0">
             {STATUS_TABS.map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="h-10 px-3.5 text-sm"
+                className="h-9 px-3 text-sm"
               >
                 {t(tab.labelKey)}
               </TabsTrigger>
@@ -258,8 +258,8 @@ export function Toolbar({
           </Button>
         </PopoverTrigger>
 
-        <PopoverContent align="end" className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
+        <PopoverContent align="end" className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
             <SubsectionLabel className="text-xs text-foreground-subtle">
               {t("common.priority")}
             </SubsectionLabel>
@@ -286,7 +286,7 @@ export function Toolbar({
           </div>
 
           {tags.length > 0 && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               <SubsectionLabel className="text-xs text-foreground-subtle">
                 {t("common.tags")}
               </SubsectionLabel>

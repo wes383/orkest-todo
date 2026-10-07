@@ -1,8 +1,7 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import {
   CalendarClock,
   CalendarDays,
-  ChevronRight,
   CircleDashed,
   Copy,
   ListChecks,
@@ -129,13 +128,11 @@ export function TodoItem({
   const priority = PRIORITY_META[todo.priority];
   const tone = dueTone(todo.dueDate, todo.done);
   const doneSubs = todo.subtasks.filter((s) => s.done).length;
-  const hasDetail = todo.notes.length > 0 || todo.subtasks.length > 0;
   const subProgress =
     todo.subtasks.length === 0
       ? 0
       : Math.round((doneSubs / todo.subtasks.length) * 100);
 
-  const hasPriority = todo.priority !== "low";
   /**
    * `dueToneClass` is keyed by tone, so the tone has to be resolved *with* the
    * date in one expression. Keeping them as two separate optionals would force
@@ -275,12 +272,12 @@ export function TodoItem({
   }
 
   /**
-   * A card with no priority, no due date, no subtasks, no list and no tags
-   * still rendered an empty meta row, and its `mt-1.5` was 6px of phantom
-   * height that made the title sit visibly above the card's optical centre.
-   * Render the row only when it has something to say.
+   * A card with no due date, no subtasks, no list and no tags still rendered
+   * an empty meta row, and its `mt-1` was 4px of phantom height that made the
+   * title sit visibly above the card's optical centre. Render the row only
+   * when it has something to say.
    */
-  const hasMetaRow = hasPriority || due !== null || metaGroups.length > 0;
+  const hasMetaRow = due !== null || metaGroups.length > 0;
 
   return (
     <ContextMenu>
@@ -293,17 +290,7 @@ export function TodoItem({
             expanded && "border-border-strong"
           )}
         >
-          {/* Priority rail — the row's only always-on color signal */}
-          <span
-            aria-hidden="true"
-            className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full"
-            style={{
-              backgroundColor: `var(${priority.cssVar})`,
-              opacity: todo.priority === "low" ? 0.35 : 1,
-            }}
-          />
-
-          <div className="flex items-start gap-3 p-4 pl-5 pr-3">
+          <div className="flex items-start gap-2.5 p-3 pl-4 pr-2.5">
             <Checkbox
               checked={todo.done}
               onCheckedChange={onToggle}
@@ -312,13 +299,22 @@ export function TodoItem({
                   ? t("todo.markIncomplete", { title: todo.title })
                   : t("todo.markComplete", { title: todo.title })
               }
-              className="mt-0.5 h-5 w-5 rounded-full"
+              /*
+               * The priority rail the card used to carry in the margin now
+               * rides the box's own outline — scoped to the unchecked state so
+               * a completed box stays a plain accent fill instead of an accent
+               * fill inside a priority-coloured ring.
+               */
+              style={
+                { "--todo-priority": `var(${priority.cssVar})` } as CSSProperties
+              }
+              className="mt-0.5 h-5 w-5 rounded-full data-[state=unchecked]:border-[color:var(--todo-priority)]"
             />
 
             <button
               type="button"
-              onClick={() => hasDetail && setExpanded((v) => !v)}
-              aria-expanded={hasDetail ? expanded : undefined}
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
               className={cn(
                 "min-w-0 flex-1 text-left",
                 // Pointer everywhere on the card's text area, expanded or not:
@@ -327,36 +323,18 @@ export function TodoItem({
                 "cursor-pointer"
               )}
             >
-              <div className="flex items-start gap-2">
-                {hasDetail && (
-                  <Icon
-                    icon={ChevronRight}
-                    size="sm"
-                    className={cn(
-                      "mt-1 text-foreground-subtle transition-transform duration-base ease-out",
-                      expanded && "rotate-90"
-                    )}
-                  />
+              <span
+                className={cn(
+                  "text-base leading-snug",
+                  todo.done && "text-foreground-muted line-through decoration-1"
                 )}
-                <span
-                  className={cn(
-                    "text-base leading-snug",
-                    todo.done && "text-foreground-muted line-through decoration-1"
-                  )}
-                >
-                  {todo.title}
-                </span>
-              </div>
+              >
+                {todo.title}
+              </span>
 
               {/* Meta row — state as tinted pills, metadata as one muted run */}
               {hasMetaRow && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5">
-                  {hasPriority && (
-                    <Badge variant={priority.badge} size="sm">
-                      {t(priority.shortKey)}
-                    </Badge>
-                  )}
-
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5">
                   {due && (
                     <span
                       className={cn(
@@ -438,13 +416,22 @@ export function TodoItem({
             </div>
           </div>
 
-          {/* Expanded detail */}
-          {expanded && hasDetail && (
-            <div className="animate-fade-in border-t border-border py-4 pl-[3.25rem] pr-5">
+          {/*
+           * The detail panel carries what the card face no longer can. Priority
+           * moved down here when the face gave it up, and the panel opens on
+           * every card — a card with neither notes nor subtasks still has a
+           * priority and a stamp to show.
+           */}
+          {expanded && (
+            <div className="animate-fade-in border-t border-border py-3 pl-[2.875rem] pr-4">
+              <Badge variant={priority.badge} size="sm">
+                {t(priority.labelKey)}
+              </Badge>
+
               {todo.notes && (
                 <LinkText
                   text={todo.notes}
-                  className="text-sm leading-relaxed text-foreground-muted"
+                  className="mt-4 text-sm leading-relaxed text-foreground-muted"
                 />
               )}
 

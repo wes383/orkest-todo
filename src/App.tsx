@@ -32,6 +32,7 @@ import { FocusView } from "@/components/focus/focus-view";
 import { CommandPalette, PALETTE_ICONS, type PaletteCommand } from "@/components/command-palette";
 import { VirtualTodoList } from "@/components/todo/virtual-todo-list";
 import { useAppTheme } from "@/components/theme-provider";
+import { DensityProvider } from "@/components/density-provider";
 import { useGlobalShortcuts } from "@/lib/global-shortcut";
 /*
  * Code-split the screens that are not the task list: they are heavy (charts,
@@ -796,6 +797,7 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
+      <DensityProvider>
       <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
         <Sidebar
           lists={lists}
@@ -916,7 +918,7 @@ export default function App() {
            * `no-select` was dropped from this band: it sets `user-select: none`,
            * and the header now holds a real text field.
            */}
-          <header className="shrink-0 border-b border-border px-8 py-3">
+          <header className="shrink-0 border-b border-border px-6 py-2.5">
             <div className="mx-auto w-full max-w-[880px]">
               <h1 className="sr-only">{heading}</h1>
 
@@ -940,7 +942,7 @@ export default function App() {
             onCreate={openCreate}
           >
             <ScrollArea className="flex-1">
-            <div className="mx-auto flex w-full max-w-[880px] flex-col gap-5 px-8 py-5">
+            <div className="mx-auto flex w-full max-w-[880px] flex-col gap-3 px-6 py-4">
               <QuickAdd
                 ref={quickAddRef}
                 listName={targetListName}
@@ -1085,6 +1087,7 @@ export default function App() {
       </AlertDialog>
 
       <Toaster />
+      </DensityProvider>
     </TooltipProvider>
   );
 }

@@ -22,8 +22,8 @@ type Row<T> =
   | { kind: "todo"; key: string; item: T };
 
 const OVERSCAN = 6;
-const ESTIMATED_ROW = 76;
-const ESTIMATED_HEADER = 40;
+const ESTIMATED_ROW = 64;
+const ESTIMATED_HEADER = 32;
 
 export function VirtualTodoList<T extends { id: string }>({
   items,
@@ -91,7 +91,7 @@ export function VirtualTodoList<T extends { id: string }>({
               }}
             >
               {row.kind === "header" ? (
-                <div className="flex items-center gap-2 px-1 pb-2 pt-4">
+                <div className="flex items-center gap-2 px-1 pb-1.5 pt-3">
                   <h2
                     className={cn(
                       "text-[13px] font-medium tracking-wide",
@@ -105,7 +105,7 @@ export function VirtualTodoList<T extends { id: string }>({
                   </span>
                 </div>
               ) : (
-                <div className="pb-2">{renderTodo(row.item)}</div>
+                <div className="pb-1.5">{renderTodo(row.item)}</div>
               )}
             </div>
           );

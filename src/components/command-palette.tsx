@@ -172,12 +172,12 @@ export function CommandPalette({
             }}
             placeholder={t("palette.placeholder")}
             aria-label={t("palette.placeholder")}
-            className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-foreground-faint"
+            className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-foreground-faint"
           />
         </div>
-        <div ref={listRef} className="max-h-[320px] overflow-y-auto p-2" role="listbox">
+        <div ref={listRef} className="max-h-[320px] overflow-y-auto p-1.5" role="listbox">
           {rows.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-foreground-subtle">
+            <p className="px-3 py-5 text-center text-sm text-foreground-subtle">
               {t("palette.empty")}
             </p>
           ) : (
@@ -193,7 +193,7 @@ export function CommandPalette({
                   onMouseEnter={() => setActive(index)}
                   onClick={() => run(index)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
                     index === active
                       ? "bg-hover-bg-strong text-foreground"
                       : "text-foreground-muted"

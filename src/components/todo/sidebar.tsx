@@ -76,11 +76,11 @@ const VIEWS: ViewDef[] = [
 
 /** Shared shape for every row in the sidebar — views, lists, everything. */
 const rowLayout =
-  "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors duration-base ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors duration-base ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** The same shape as an icon rail: the same box, narrowed to a square and
     centred, so a collapsed row cannot drift from the row it replaced. No
-    `px-3` — the width is the square's. */
+    `px-2.5` — the width is the square's. */
 const rowLayoutRail = cn(rowLayout, "justify-center px-0 py-0 h-9 w-9");
 
 /** The icons keep their colour with no text to tint, and hover still paints the
@@ -288,7 +288,7 @@ export function Sidebar({
         <div
           className={cn(
             "flex flex-col",
-            collapsed ? "items-center gap-2 px-3 py-4" : "gap-6 px-3 py-5"
+            collapsed ? "items-center gap-2 px-3 py-3" : "gap-5 px-3 py-4"
           )}
         >
           {/* Smart views */}
@@ -299,14 +299,14 @@ export function Sidebar({
                 the rows. The views/lists divider below is still printed: that one
                 does separate two groups. */}
             {!collapsed && (
-              <SubsectionLabel className="px-3 text-xs text-foreground-subtle">
+              <SubsectionLabel className="px-2.5 text-xs text-foreground-subtle">
                 {t("sidebar.sectionViews")}
               </SubsectionLabel>
             )}
             <nav
               className={cn(
                 "flex flex-col gap-0.5",
-                !collapsed && "mt-2",
+                !collapsed && "mt-1.5",
                 collapsed && "items-center"
               )}
             >
@@ -404,7 +404,7 @@ export function Sidebar({
             {collapsed ? (
               <hr className="mb-2 border-border" />
             ) : (
-              <div className="flex items-center justify-between pl-3 pr-1">
+              <div className="flex items-center justify-between pl-2.5 pr-1">
                 <SubsectionLabel className="text-xs text-foreground-subtle">
                   {t("sidebar.sectionLists")}
                 </SubsectionLabel>
@@ -428,7 +428,7 @@ export function Sidebar({
             <nav
               className={cn(
                 "flex flex-col gap-0.5",
-                !collapsed && "mt-2",
+                !collapsed && "mt-1.5",
                 collapsed && "items-center"
               )}
             >
@@ -611,7 +611,7 @@ export function Sidebar({
       <div
         className={cn(
           "border-t border-border",
-          collapsed ? "flex flex-col items-center gap-0.5 px-3 py-3" : "px-3 py-3"
+          collapsed ? "flex flex-col items-center gap-0.5 px-3 py-2.5" : "px-3 py-2.5"
         )}
       >
         <nav

@@ -48,7 +48,7 @@ export function Card({
     >
       {/* Wraps rather than squeezes: a wide picker drops under the title instead
           of forcing the title to break. */}
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-5 py-3">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-2.5">
         <div className="flex items-baseline gap-2">
           <h2 className="text-xs font-medium tracking-wide text-foreground-muted">
             {title}
@@ -61,7 +61,7 @@ export function Card({
         </div>
         {action}
       </header>
-      <div className="p-5">{children}</div>
+      <div className="p-4">{children}</div>
     </section>
   );
 }
@@ -70,11 +70,11 @@ export function Card({
     sits in is the same surface. */
 export function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-muted px-4 py-3">
+    <div className="rounded-md bg-muted px-3 py-2.5">
       <div className="text-xs font-medium tracking-wide text-foreground-muted">
         {label}
       </div>
-      <div className="mt-2 whitespace-nowrap font-display text-lg font-semibold leading-none tracking-tight tabular-nums text-foreground">
+      <div className="mt-1.5 whitespace-nowrap font-display text-lg font-semibold leading-none tracking-tight tabular-nums text-foreground">
         {value}
       </div>
     </div>
@@ -108,7 +108,7 @@ export function Segmented<T extends string>({
           aria-selected={option.key === value}
           onClick={() => onChange(option.key)}
           className={cn(
-            "rounded-sm px-2.5 py-1.5 text-xs font-medium leading-none transition-colors",
+            "rounded-sm px-2 py-1 text-xs font-medium leading-none transition-colors",
             option.key === value
               ? "bg-surface text-foreground shadow-xs"
               : "text-foreground-muted hover:text-foreground"
@@ -311,7 +311,7 @@ export function Line({
         // answers to the same geometry the line does, so a label sits under its
         // point however wide the card runs — even columns would drift apart from
         // the points as the box widened.
-        <div className="relative mt-2 h-3">
+        <div className="relative mt-1.5 h-3">
           {labels.map((label, index) => (
             <span
               key={index}
@@ -428,12 +428,14 @@ export function Heat({
 
 /* ── The year at a glance ─────────────────────────────────── */
 
-/** Cell edge and the gap between cells, in px. Fixed rather than fluid: fifty-
-    three `flex-1` squares would grow absurdly tall on a wide card, and the
-    month labels and the legend are positioned off these two numbers, so they
-    live in one place. */
-const YEAR_CELL = 12;
-const YEAR_GAP = 3;
+/** The gap between cells and the width of the weekday gutter, in px. The cell
+    edge itself is *not* fixed: the grid measures its own container and sizes a
+    cell so a year's weeks reach the right edge. The month labels, the weekday
+    glyphs and the legend all read that measured value, so they move together. */
+const YEAR_GAP = 2;
+const YEAR_WEEKDAY_W = 28;
+/** Below this a cell stops reading as a cell; the grid scrolls instead. */
+const YEAR_CELL_MIN = 10;
 
 /**
  * The GitHub-style year grid: one cell a day, a column a week, Monday on top
@@ -500,20 +502,56 @@ export function YearHeat({
     return { cols, fullest };
   }, [buckets, today, year]);
 
-  /* Month labels sit over the column whose Monday opens a new month. */
+  /*
+   * The grid fills its container. Measuring the scroller itself (rather than
+   * assuming a width) keeps the year's weeks flush to the right edge at any
+   * card size, and the weekday gutter, the month labels and the legend all
+   * derive from the same `cellSize`, so they can never drift apart. The 0.25px
+   * guard matters: the observer also fires when the grid's *height* changes
+   * with the cell size, and only the width should drive a re-measure.
+   */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [cellSize, setCellSize] = useState(YEAR_CELL_MIN);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const n = cols.length || 53;
+      // Gutter + n cells + n gaps span the width; clamped so a narrow window
+      // scrolls rather than crushing the cells to slivers.
+      const next = Math.max(
+        YEAR_CELL_MIN,
+        (el.clientWidth - YEAR_WEEKDAY_W - n * YEAR_GAP) / n
+      );
+      setCellSize((prev) => (Math.abs(prev - next) < 0.25 ? prev : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [cols.length]);
+
+  /* Month labels sit over the column whose Monday opens a new month. The
+     boundary week's Monday can belong to the December before the year on
+     screen — that label would sit over cells the grid draws blank, so it is
+     left off and the run starts at the year's own January. */
   const monthLabels = useMemo(() => {
     const format = new Intl.DateTimeFormat(LOCALES[lang], { month: "short" });
+    const jan1 = new Date(year, 0, 1).getTime();
     const out: { w: number; label: string }[] = [];
     let previous = -1;
     cols.forEach((col, w) => {
-      const month = new Date(col[0].day).getMonth();
+      const day = col[0].day;
+      if (day < jan1) return;
+      const month = new Date(day).getMonth();
       if (month !== previous) {
-        out.push({ w, label: format.format(new Date(col[0].day)) });
+        out.push({ w, label: format.format(new Date(day)) });
         previous = month;
       }
     });
     return out;
-  }, [cols, lang]);
+  }, [cols, lang, year]);
 
   /* The date as the tooltip reads it, year included — a cell can sit eleven
      months back, where the bare `Sep 20` shape would leave the year to be
@@ -549,19 +587,19 @@ export function YearHeat({
      * window that needs one: it covers padding, never the legend or the
      * grid's last row. The theme's own scrollbars are 10px; `pb-3` is 12.
      */
-    <div className="overflow-x-auto overflow-y-hidden">
+    <div ref={scrollRef} className="overflow-x-auto overflow-y-hidden">
       <div className="w-max pb-3" onPointerLeave={leave}>
-        {/* Month labels, positioned off the fixed cell geometry and offset by
-            the weekday column's width. */}
+        {/* Month labels, positioned off the measured cell geometry and offset
+            by the weekday column's width. */}
         <div
           className="relative mb-1.5 h-4"
-          style={{ marginLeft: 28 + YEAR_GAP }}
+          style={{ marginLeft: YEAR_WEEKDAY_W + YEAR_GAP }}
         >
           {monthLabels.map(({ w, label }) => (
             <span
               key={w}
               className="absolute top-0 text-xs leading-none text-foreground-faint"
-              style={{ left: w * (YEAR_CELL + YEAR_GAP) }}
+              style={{ left: w * (cellSize + YEAR_GAP) }}
             >
               {label}
             </span>
@@ -574,7 +612,7 @@ export function YearHeat({
               <span
                 key={row}
                 className="flex items-center text-xs leading-none text-foreground-faint"
-                style={{ height: YEAR_CELL }}
+                style={{ height: cellSize }}
               >
                 {row === 0
                   ? dayNames[0]
@@ -610,7 +648,7 @@ export function YearHeat({
                           "opacity-0"
                         : HEAT_STEPS[heatStep(cell.value, fullest)]
                     )}
-                    style={{ width: YEAR_CELL, height: YEAR_CELL }}
+                    style={{ width: cellSize, height: cellSize }}
                   />
                 );
               })}
@@ -618,14 +656,14 @@ export function YearHeat({
           ))}
         </div>
         {/* The legend, measured on the same ramp the cells are. */}
-        <div className="mt-2 flex items-center justify-end gap-1 text-xs leading-none text-foreground-faint">
+        <div className="mt-1.5 flex items-center justify-end gap-1 text-xs leading-none text-foreground-faint">
           <span>{lessLabel}</span>
           {HEAT_STEPS.map((step) => (
             <span
               key={step}
               aria-hidden="true"
               className={cn("rounded-[3px]", step)}
-              style={{ width: YEAR_CELL, height: YEAR_CELL }}
+              style={{ width: cellSize, height: cellSize }}
             />
           ))}
           <span>{moreLabel}</span>

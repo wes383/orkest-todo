@@ -1,41 +1,83 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { useDensity, type Density } from "@/components/density-provider";
+
+/** Padding density tiers shared by Card, CardHeader, CardContent and CardFooter. */
+export type CardDensity = Density;
+
+const cardHeaderVariants = cva("flex flex-col", {
+  variants: {
+    density: {
+      compact: "gap-1 p-4",
+      default: "gap-1.5 p-5",
+      comfortable: "gap-2 p-6",
+    },
+  },
+  defaultVariants: { density: "default" },
+});
+
+const cardSectionVariants = cva("", {
+  variants: {
+    density: {
+      compact: "p-4 pt-0",
+      default: "p-5 pt-0",
+      comfortable: "p-6 pt-0",
+    },
+  },
+  defaultVariants: { density: "default" },
+});
+
+/**
+ * Propagates the density set on `<Card>` down to its sections, so only the
+ * card root needs the prop.
+ */
+const CardDensityContext = React.createContext<CardDensity>("default");
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   asChild?: boolean;
   hoverable?: boolean;
+  /** Padding density. Falls back to the surrounding density, then to "default". */
+  density?: CardDensity;
 }
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, asChild = false, hoverable = false, ...props }, ref) => {
+  ({ className, asChild = false, hoverable = false, density, ...props }, ref) => {
     const Comp = asChild ? Slot : "div";
+    const globalDensity = useDensity();
+    const resolvedDensity = density ?? globalDensity;
     return (
-      <Comp
-        ref={ref}
-        className={cn(
-          "rounded-lg border border-border bg-surface text-foreground transition-colors duration-base ease-out",
-          hoverable && "hover:border-border-strong",
-          className
-        )}
-        {...props}
-      />
+      <CardDensityContext.Provider value={resolvedDensity}>
+        <Comp
+          ref={ref}
+          className={cn(
+            "rounded-lg border border-border bg-surface text-foreground transition-colors duration-base ease-out",
+            hoverable && "hover:border-border-strong",
+            className
+          )}
+          {...props}
+        />
+      </CardDensityContext.Provider>
     );
   }
 );
 Card.displayName = "Card";
 
-export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardHeaderProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    Pick<VariantProps<typeof cardHeaderVariants>, "density"> {
   asChild?: boolean;
 }
 
 export const CardHeader = React.forwardRef<HTMLDivElement, CardHeaderProps>(
-  ({ className, asChild = false, ...props }, ref) => {
+  ({ className, asChild = false, density, ...props }, ref) => {
+    const ctx = React.useContext(CardDensityContext);
     const Comp = asChild ? Slot : "div";
     return (
       <Comp
         ref={ref}
-        className={cn("flex flex-col gap-1.5 p-5", className)}
+        className={cn(cardHeaderVariants({ density: density ?? ctx, className }))}
         {...props}
       />
     );
@@ -103,17 +145,20 @@ export const CardAction = React.forwardRef<HTMLDivElement, CardActionProps>(
 );
 CardAction.displayName = "CardAction";
 
-export interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardContentProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    Pick<VariantProps<typeof cardSectionVariants>, "density"> {
   asChild?: boolean;
 }
 
 export const CardContent = React.forwardRef<HTMLDivElement, CardContentProps>(
-  ({ className, asChild = false, ...props }, ref) => {
+  ({ className, asChild = false, density, ...props }, ref) => {
+    const ctx = React.useContext(CardDensityContext);
     const Comp = asChild ? Slot : "div";
     return (
       <Comp
         ref={ref}
-        className={cn("p-5 pt-0", className)}
+        className={cn(cardSectionVariants({ density: density ?? ctx, className }))}
         {...props}
       />
     );
@@ -121,17 +166,23 @@ export const CardContent = React.forwardRef<HTMLDivElement, CardContentProps>(
 );
 CardContent.displayName = "CardContent";
 
-export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CardFooterProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    Pick<VariantProps<typeof cardSectionVariants>, "density"> {
   asChild?: boolean;
 }
 
 export const CardFooter = React.forwardRef<HTMLDivElement, CardFooterProps>(
-  ({ className, asChild = false, ...props }, ref) => {
+  ({ className, asChild = false, density, ...props }, ref) => {
+    const ctx = React.useContext(CardDensityContext);
     const Comp = asChild ? Slot : "div";
     return (
       <Comp
         ref={ref}
-        className={cn("flex items-center p-5 pt-0", className)}
+        className={cn(
+          "flex items-center",
+          cardSectionVariants({ density: density ?? ctx, className })
+        )}
         {...props}
       />
     );

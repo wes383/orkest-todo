@@ -185,7 +185,7 @@ function Name({ item }: { item: Milestone }) {
     <>
       <span
         className={cn(
-          "mb-3 text-sm leading-tight",
+          "mb-2 text-sm leading-tight",
           item.reached ? "text-foreground" : "text-foreground-muted"
         )}
       >
@@ -1062,17 +1062,17 @@ export function FocusStats({
           too far out. (Radix's ScrollArea.Root carries `relative` for exactly
           this reason, which is why the task list never showed the bug.) */}
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1600px] px-5 pb-12 pt-6 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[1600px] px-5 pb-10 pt-5 sm:px-6 lg:px-8">
                 {/* Two columns once there is room for two; one before that, in
                     the order of how often the thing is looked at. The breakdown
                     leads, in the corner the eye lands on first: it is the one
                     card that says where the hours went, and it carries the
                     scope picker that rescales every other card on the sheet. */}
-                <div className="grid items-start gap-5 xl:grid-cols-12">
+                <div className="grid items-start gap-4 xl:grid-cols-12">
                   {/* Each column is its own stack so cards flow tightly: in
                       a shared row grid the row is held open by the tallest
                       card in it, stranding whitespace under short ones. */}
-                  <div className="flex flex-col gap-5 xl:col-span-5">
+                  <div className="flex flex-col gap-4 xl:col-span-5">
                   <Card
                     title={t("focus.log.byList")}
                     action={
@@ -1116,12 +1116,12 @@ export function FocusStats({
                         {/* The time half gets its own caption, mirroring the
                             task half's below, so the card reads as two labeled
                             sections rather than one bare list. */}
-                        <p className="mb-3 text-xs font-medium tracking-wide text-foreground-muted">
+                        <p className="mb-2 text-xs font-medium tracking-wide text-foreground-muted">
                           {t("focus.log.byList.time")}
                         </p>
                       {/* Filed against unfiled, read before the bars: how much
                           of the log the bars below actually account for. */}
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-3 gap-2.5">
                         <Metric
                           label={t("stats.split.filed")}
                           value={duration(split?.filed ?? 0, language)}
@@ -1135,13 +1135,13 @@ export function FocusStats({
                           value={`${Math.round((split?.ratio ?? 0) * 100)}%`}
                         />
                       </div>
-                      <p className="mb-3 mt-5 text-xs font-medium tracking-wide text-foreground-muted">
+                      <p className="mb-2 mt-4 text-xs font-medium tracking-wide text-foreground-muted">
                         {t("focus.log.byList.timeByList")}
                       </p>
-                      <ul className="flex flex-col gap-3">
+                      <ul className="flex flex-col gap-2.5">
                         {listTotals.map((total) => (
                           <li key={total.listId ?? SCOPE_UNASSIGNED}>
-                            <div className="flex items-baseline justify-between gap-4 text-sm">
+                            <div className="flex items-baseline justify-between gap-3 text-sm">
                               <span className="truncate text-foreground">
                                 {displayName(total.listId)}
                               </span>
@@ -1180,11 +1180,11 @@ export function FocusStats({
                         glued together. The figures follow the picker like the
                         durations do — pick a list, and both halves speak of
                         that list alone. */}
-                    <div className="mt-6 border-t border-border pt-5">
+                    <div className="mt-5 border-t border-border pt-4">
                       <p className="text-xs font-medium tracking-wide text-foreground-muted">
                         {t("stats.tasks.title")}
                       </p>
-                      <div className="mt-3 grid grid-cols-3 gap-3">
+                      <div className="mt-3 grid grid-cols-3 gap-2.5">
                         <Metric
                           label={t("stats.tasks.today")}
                           value={t("stats.tasks.count", {
@@ -1211,13 +1211,13 @@ export function FocusStats({
                           family. */}
                       {taskRows.length > 0 && (
                         <>
-                          <p className="mb-3 mt-5 text-xs font-medium tracking-wide text-foreground-muted">
+                          <p className="mb-2 mt-4 text-xs font-medium tracking-wide text-foreground-muted">
                             {t("stats.tasks.byList")}
                           </p>
-                          <ul className="flex flex-col gap-3">
+                          <ul className="flex flex-col gap-2.5">
                             {taskRows.map((row) => (
                               <li key={row.listId}>
-                                <div className="flex items-baseline justify-between gap-4 text-sm">
+                                <div className="flex items-baseline justify-between gap-3 text-sm">
                                   <span className="truncate text-foreground">
                                     {displayName(row.listId)}
                                   </span>
@@ -1268,7 +1268,7 @@ export function FocusStats({
                       />
                     }
                   >
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-2.5">
                       <Metric
                         label={t("focus.log.perDay")}
                         value={duration(averages?.perDay ?? 0, language)}
@@ -1298,7 +1298,7 @@ export function FocusStats({
                       </p>
                     ) : (
                       <dl className="text-sm">
-                        <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
+                        <div className="flex items-baseline justify-between gap-3 border-b border-border pb-3">
                           <dt className="text-foreground-muted">
                             {t("focus.log.bestStretch")}
                           </dt>
@@ -1312,7 +1312,7 @@ export function FocusStats({
                             </span>
                           </dd>
                         </div>
-                        <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3 pt-3">
+                        <div className="flex items-baseline justify-between gap-3 border-b border-border pb-3 pt-3">
                           <dt className="text-foreground-muted">
                             {t("focus.log.bestDay")}
                           </dt>
@@ -1340,7 +1340,7 @@ export function FocusStats({
                             )}
                           </dd>
                         </div>
-                        <div className="flex items-baseline justify-between gap-4 pt-3">
+                        <div className="flex items-baseline justify-between gap-3 pt-3">
                           <dt className="text-foreground-muted">
                             {t("focus.log.bestDayTasks")}
                           </dt>
@@ -1364,7 +1364,7 @@ export function FocusStats({
                   </Card>
                   </div>
 
-                  <div className="flex flex-col gap-5 xl:col-span-7">
+                  <div className="flex flex-col gap-4 xl:col-span-7">
                   <Card
                     title={t("focus.log.stretches")}
                     hint={dayUseful > 0 ? duration(dayUseful, language) : undefined}
@@ -1431,7 +1431,7 @@ export function FocusStats({
                     }
                   >
                     {rows.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2.5 rounded-lg border border-dashed border-border px-6 py-10 text-center">
                         <Timer
                           className="h-7 w-7 text-foreground-faint"
                           aria-hidden="true"
@@ -1481,9 +1481,9 @@ export function FocusStats({
                               // the whole row answers to the pointer.
                               <li
                                 key={span.start}
-                                className="border-b border-border px-3 py-2.5 transition-colors duration-base ease-out last:border-b-0 hover:bg-hover-bg"
+                                className="border-b border-border px-3 py-2 transition-colors duration-base ease-out last:border-b-0 hover:bg-hover-bg"
                               >
-                                <div className="flex items-center gap-3 text-sm">
+                                <div className="flex items-center gap-2.5 text-sm">
                                   <span
                                     className={cn(
                                       "shrink-0 tabular-nums",
@@ -1714,7 +1714,7 @@ export function FocusStats({
                         deserves to know why. The ceiling is in the same line: a
                         useful stretch left running is credited at most the cap,
                         so nobody loses a night to a forgotten switch. */}
-                    <p className="mt-5 text-sm leading-snug text-foreground-muted">
+                    <p className="mt-4 text-sm leading-snug text-foreground-muted">
                       {t("focus.log.foot", {
                         min: spanLimits().minMs / 60_000,
                         max: spanLimits().maxMs / 3_600_000,
@@ -1735,7 +1735,7 @@ export function FocusStats({
                               value: duration(hours[peak], language),
                             })}
                       </p>
-                      <div className="mt-5">
+                      <div className="mt-4">
                         <Heat
                           grid={figures?.heat ?? []}
                           lang={language}
@@ -1799,7 +1799,7 @@ export function FocusStats({
                         an axis (hours and counts do not), so each keeps its
                         own chart and its own label; the shared picker and the
                         shared spans are what make the pair readable as one. */}
-                    <div className="mt-5 flex flex-col gap-5">
+                    <div className="mt-4 flex flex-col gap-4">
                       <div>
                         <p className="mb-2 text-xs font-medium tracking-wide text-foreground-muted">
                           {t("stats.compare.focus")}
@@ -1944,7 +1944,7 @@ export function FocusStats({
                         counts them. Worn on every rung it would be the same line
                         twelve times over, and the count — `720 perfect days` —
                         never says on its own what one of those days had to be. */}
-                    <p className="mt-5 text-sm leading-snug text-foreground-muted">
+                    <p className="mt-4 text-sm leading-snug text-foreground-muted">
                       {t(PERFECT_DAY_RULE_KEY, { pct: RICH_PCT })}
                     </p>
                   </Card>

@@ -151,7 +151,7 @@ function Row({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3.5 last:border-b-0">
+    <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0">
       <div className="min-w-0">
         <label
           htmlFor={htmlFor}
@@ -391,9 +391,9 @@ export function SettingsView({
           here later would otherwise escape the clip and grow the document a
           scrollbar of its own. */}
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[880px] px-8 pb-16 pt-6">
+        <div className="mx-auto w-full max-w-[880px] px-8 pb-14 pt-5">
           {/* Appearance */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionAppearance")}
             </SubsectionLabel>
@@ -442,7 +442,7 @@ export function SettingsView({
           </section>
 
           {/* Language */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionLanguage")}
             </SubsectionLabel>
@@ -475,7 +475,7 @@ export function SettingsView({
           </section>
 
           {/* Sidebar — which smart views are worth a row */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionSidebar")}
             </SubsectionLabel>
@@ -528,7 +528,7 @@ export function SettingsView({
               quit and the other is pushed down in advance — a close request has
               to be answered inside the event, where there is nobody to ask. See
               `quit.ts` for both. */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionStartup")}
             </SubsectionLabel>
@@ -588,7 +588,7 @@ export function SettingsView({
               Values are clamped here before they are stored, so a wild number
               never reaches the log; settings.ts clamps again on the way back
               in. */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionFocus")}
             </SubsectionLabel>
@@ -708,7 +708,7 @@ export function SettingsView({
 
           {/* ── 同步 ── The bridge to the phone: credentials, the sync code
               the phone will be told, and the state of the engine right now. */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionSync")}
             </SubsectionLabel>
@@ -810,7 +810,7 @@ export function SettingsView({
               holds" is a whole-app concern, and one click now writes two files
               — the focus log as it always went, and the task set beside it.
               The privacy row answers the other half of the same question. */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionData")}
             </SubsectionLabel>
@@ -870,7 +870,7 @@ export function SettingsView({
           {/* Danger zone — the one destructive button on the page. Behind the
               confirm dialog, because a single mis-click on "delete everything"
               is not a mistake the app can offer to undo. */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionDanger")}
             </SubsectionLabel>
@@ -898,7 +898,7 @@ export function SettingsView({
               label's place and the number reads as its explanation, the way
               `settings.autostartHint` explains the row above it — which is
               what it is: a fact about this build, not a setting to change. */}
-          <section className="mt-6">
+          <section className="mt-5">
             <SubsectionLabel className="px-1 text-xs text-foreground-subtle">
               {t("settings.sectionAbout")}
             </SubsectionLabel>

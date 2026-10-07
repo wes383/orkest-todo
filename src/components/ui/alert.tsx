@@ -8,23 +8,30 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDensity, type Density } from "@/components/density-provider";
 
-const alertVariants = cva(
-  "flex items-start gap-3 p-3.5 rounded-lg border text-sm",
-  {
-    variants: {
-      variant: {
-        info: "bg-blue-soft border-blue-border text-blue",
-        success: "bg-green-soft border-green-border text-green",
-        warning: "bg-orange-soft border-orange-border text-orange",
-        error: "bg-red-soft border-red-border text-red",
-      },
+/** Density tiers for the alert box. */
+export type AlertDensity = Density;
+
+const alertVariants = cva("flex items-start border", {
+  variants: {
+    variant: {
+      info: "bg-blue-soft border-blue-border text-blue",
+      success: "bg-green-soft border-green-border text-green",
+      warning: "bg-orange-soft border-orange-border text-orange",
+      error: "bg-red-soft border-red-border text-red",
     },
-    defaultVariants: {
-      variant: "info",
+    density: {
+      compact: "gap-2 p-2.5 rounded-md text-xs",
+      default: "gap-3 p-3.5 rounded-lg text-sm",
+      comfortable: "gap-3.5 p-4 rounded-lg text-sm",
     },
-  }
-);
+  },
+  defaultVariants: {
+    variant: "info",
+    density: "default",
+  },
+});
 
 const iconMap: Record<NonNullable<AlertProps["variant"]>, LucideIcon> = {
   info: Info,
@@ -41,14 +48,17 @@ export interface AlertProps
 }
 
 export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
-  ({ className, variant = "info", icon, hideIcon = false, children, ...props }, ref) => {
+  ({ className, variant = "info", density, icon, hideIcon = false, children, ...props }, ref) => {
+    const globalDensity = useDensity();
     const Icon = variant ? iconMap[variant] : Info;
     return (
       <div
         ref={ref}
         role="alert"
         data-variant={variant}
-        className={cn(alertVariants({ variant, className }))}
+        className={cn(
+          alertVariants({ variant, density: density ?? globalDensity, className })
+        )}
         {...props}
       >
         {!hideIcon && (

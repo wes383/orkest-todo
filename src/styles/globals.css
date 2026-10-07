@@ -121,7 +121,7 @@
 
     /* ── Typography ── */
     /* Four families, mirroring orkest-ui:
-         Latin  → Inter (body) / Manrope (display) / JetBrains Mono (code)
+         Latin  → Inter (body) / Plus Jakarta Sans (display) / JetBrains Mono (code)
          CJK    → Noto Sans SC (Source Han Sans)
        The `var(--font-*)` hooks come first so a host that injects them (e.g.
        orkest-ui itself, via next/font) still wins; otherwise we fall through to
@@ -133,7 +133,8 @@
                 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB',
                 'Microsoft YaHei', sans-serif;
     --font-sans: var(--font-inter, 'Inter Variable'), 'Inter', var(--font-cjk);
-    --font-display: var(--font-manrope, 'Manrope Variable'), 'Manrope', var(--font-cjk);
+    --font-display: var(--font-plus-jakarta-sans, 'Plus Jakarta Sans Variable'),
+                    'Plus Jakarta Sans', var(--font-cjk);
     --font-mono: var(--font-jetbrains-mono, 'JetBrains Mono Variable'), 'JetBrains Mono',
                  var(--font-cjk), ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
