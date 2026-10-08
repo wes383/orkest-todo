@@ -60,6 +60,13 @@ export interface AppSettings {
       leaves the webview. Off by default: the hints are how the app teaches its
       own shortcuts, so doing without them is a choice its reader makes. */
   hideShortcutHints: boolean;
+  /** `true` = the sidebar's rows stop printing their right-edge numbers: the
+      views' task counts and the lists' counts (a goal's progress percent with
+      them — it is the same kind of number, spoken at the same edge). The
+      counts are derived on the fly, so nothing needs re-reading when this
+      flips; only the rendering goes quiet. Off by default: the numbers are
+      how a sidebar answers "where is there work". */
+  hideSidebarCounts: boolean;
   /** The expanded sidebar's width, in pixels — dragged by its right edge rather
       than chosen from a list, so it lives here as the number the drag commits.
       The collapsed rail ignores it: a 56px square column is one decision, not
@@ -101,6 +108,7 @@ const DEFAULTS: AppSettings = {
   maxSpanHours: 8,
   globalShortcuts: true,
   hideShortcutHints: false,
+  hideSidebarCounts: false,
   widgetOpacity: DEFAULT_WIDGET_OPACITY,
   // Off: quitting has always meant the session keeps running, and a rule that
   // ends work on its own is one a reader should turn on deliberately.
@@ -160,6 +168,10 @@ function load(): AppSettings {
       hideShortcutHints: bool(
         parsed.hideShortcutHints,
         DEFAULTS.hideShortcutHints
+      ),
+      hideSidebarCounts: bool(
+        parsed.hideSidebarCounts,
+        DEFAULTS.hideSidebarCounts
       ),
       sidebarWidth: Math.round(
         num(parsed.sidebarWidth, DEFAULTS.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
@@ -245,6 +257,10 @@ export function useSettings() {
     setSettings((s) => ({ ...s, hideShortcutHints }));
   }, []);
 
+  const setHideSidebarCounts = useCallback((hideSidebarCounts: boolean) => {
+    setSettings((s) => ({ ...s, hideSidebarCounts }));
+  }, []);
+
   /** Written once, on the release of a drag rather than on every pointermove —
       the caller holds the live value for the duration of the gesture. */
   const setSidebarWidth = useCallback((sidebarWidth: number) => {
@@ -260,6 +276,7 @@ export function useSettings() {
     setCloseToTray,
     setGlobalShortcuts,
     setHideShortcutHints,
+    setHideSidebarCounts,
     setSidebarWidth,
   };
 }

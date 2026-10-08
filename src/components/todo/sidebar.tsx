@@ -263,6 +263,8 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<TodoList | null>(null);
+  /** The settings toggle that quiets every right-edge number in one go. */
+  const hideCounts = settings.hideSidebarCounts;
 
   /*
    * Drag-to-reorder, held in two pieces: which row is being dragged, and
@@ -476,7 +478,7 @@ export function Sidebar({
                         <span className="flex-1 truncate text-left">
                           {t(view.labelKey)}
                         </span>
-                        {count > 0 && (
+                        {!hideCounts && count > 0 && (
                           <span
                             className={cn(
                               "font-mono text-xs tabular-nums",
@@ -633,17 +635,22 @@ export function Sidebar({
                         {/* A goal's row speaks in progress, a list's in a
                             count of tasks left — the two right-edge numbers
                             are answers to different questions. */}
-                        {list.goal ? (
-                          <span className="font-mono text-xs tabular-nums text-foreground-subtle">
-                            {goalProgress[list.id] ?? 0}%
-                          </span>
-                        ) : (
-                          count > 0 && (
+                        {/* A goal's row speaks in progress, a list's in a
+                            count of tasks left — the two right-edge numbers
+                            are answers to different questions, and the same
+                            setting silences both. */}
+                        {!hideCounts &&
+                          (list.goal ? (
                             <span className="font-mono text-xs tabular-nums text-foreground-subtle">
-                              {count}
+                              {goalProgress[list.id] ?? 0}%
                             </span>
-                          )
-                        )}
+                          ) : (
+                            count > 0 && (
+                              <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+                                {count}
+                              </span>
+                            )
+                          ))}
                       </>
                     )}
                     {!collapsed && dropAt?.id === list.id && dragId !== list.id && (

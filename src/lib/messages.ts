@@ -256,6 +256,7 @@ const zh = {
   "settings.deleteAllDone": "已删除所有数据",
   "settings.theme": "主题",
   "settings.hideShortcutHints": "隐藏快捷键提示",
+  "settings.hideSidebarCounts": "隐藏侧边栏数字",
   "settings.sectionAbout": "关于",
   "settings.version": "版本",
   /* A bare build number, the same in every language — hence the identical
@@ -853,6 +854,7 @@ const en: Record<MessageKey, Message> = {
   "settings.deleteAllDone": "All data deleted",
   "settings.theme": "Theme",
   "settings.hideShortcutHints": "Hide shortcut hints",
+  "settings.hideSidebarCounts": "Hide sidebar counts",
   "settings.sectionAbout": "About",
   "settings.version": "Version",
   /* Same as the Chinese block: a bare build number, and the `v` is copy. */

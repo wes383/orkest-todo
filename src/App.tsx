@@ -154,6 +154,7 @@ export default function App() {
     setCloseToTray,
     setGlobalShortcuts,
     setHideShortcutHints,
+    setHideSidebarCounts,
     setSidebarWidth,
   } = useSettings();
 
@@ -993,6 +994,7 @@ export default function App() {
               setCloseToTray={setCloseToTray}
               setGlobalShortcuts={setGlobalShortcuts}
               setHideShortcutHints={setHideShortcutHints}
+              setHideSidebarCounts={setHideSidebarCounts}
               autostart={autostart}
               focusWidget={focusWidget}
               sync={sync}

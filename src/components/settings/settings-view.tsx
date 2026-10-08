@@ -211,6 +211,9 @@ export interface SettingsViewProps {
       here like the rest and read by the toolbar, QuickAdd, the editor, the
       palette and the focus screen; nothing is unbound by it. */
   setHideShortcutHints: (value: boolean) => void;
+  /** 隐藏侧边栏数字 — whether the sidebar's rows print their right-edge
+      numbers at all. Presentation only: the counts are derived either way. */
+  setHideSidebarCounts: (value: boolean) => void;
   /** 开机自启 — the OS login item, read and written by the plugin rather than
       stored here; see `autostart.ts` for why it is the one row with no entry in
       `AppSettings`. */
@@ -252,6 +255,7 @@ export function SettingsView({
   setCloseToTray,
   setGlobalShortcuts,
   setHideShortcutHints,
+  setHideSidebarCounts,
   onDeleteAllData,
   autostart,
   focusWidget,
@@ -436,6 +440,17 @@ export function SettingsView({
                   checked={settings.hideShortcutHints}
                   onCheckedChange={setHideShortcutHints}
                   aria-label={t("settings.hideShortcutHints")}
+                />
+              </Row>
+              <Row
+                label={t("settings.hideSidebarCounts")}
+                htmlFor="settings-hide-sidebar-counts"
+              >
+                <Switch
+                  id="settings-hide-sidebar-counts"
+                  checked={settings.hideSidebarCounts}
+                  onCheckedChange={setHideSidebarCounts}
+                  aria-label={t("settings.hideSidebarCounts")}
                 />
               </Row>
             </div>
