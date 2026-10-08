@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Pencil,
   Repeat,
+  SkipForward,
   Star,
   Trash2,
 } from "lucide-react";
@@ -93,6 +94,8 @@ export interface TodoItemProps {
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueDate: string | null) => void;
   onSetReminder: (remindBefore: number | null) => void;
+  /** Retires this occurrence and spawns the next — repeating tasks only. */
+  onSkipOccurrence: () => void;
 }
 
 /** Due-date pill tones, mapped onto the Orkest semantic scale. */
@@ -149,6 +152,7 @@ export function TodoItem({
   onSetPriority,
   onSetDue,
   onSetReminder,
+  onSkipOccurrence,
 }: TodoItemProps) {
   const { t, language } = useI18n();
 
@@ -180,6 +184,17 @@ export function TodoItem({
         <Icon icon={expanded ? ChevronsDownUp : ChevronsUpDown} size="sm" />
         {expanded ? t("todo.collapse") : t("todo.expand")}
       </M.Item>
+      {/* 跳过本次 rides right under the expand row as a quiet neighbour of the
+          card's own shape — a repeating task's "not this week", spawning the
+          next occurrence and retiring this one. Only an *open* occurrence of a
+          repeating task has a "次" to skip: a completed one already has its
+          next instance living beside it. */}
+      {todo.recur && !todo.done && (
+        <M.Item onSelect={onSkipOccurrence}>
+          <Icon icon={SkipForward} size="sm" />
+          {t("todo.skipOccurrence")}
+        </M.Item>
+      )}
       <M.Item onSelect={onEdit}>
         <Icon icon={Pencil} size="sm" />
         {t("todo.edit")}
@@ -250,28 +265,31 @@ export function TodoItem({
 
       {/*
        * The reminder rides right behind the due date, because that is what it
-       * hangs from: a reminder is a moment minus a lead, and a task with no
-       * moment has nothing to hang it on — hence the disabled trigger. The
-       * items write the task's own `remindBefore` directly, the same quick
-       * write the priority and due-date submenus perform; the editor stays
-       * the place for everything else about the task.
+       * hangs from: a reminder is a moment minus a lead. A task with no due
+       * time has no moment to hang one on, so the entry is not shown at all —
+       * a greyed row or a hint flyout both read as clutter; absence reads as
+       * the rule. With a time, the items write the task's own `remindBefore`
+       * directly, the same quick write the priority and due-date submenus
+       * perform.
        */}
-      <M.Sub>
-        <M.SubTrigger disabled={!todo.dueDate || !todo.dueTime}>
-          <Bell className="h-4 w-4" aria-hidden="true" />
-          {t("editor.reminder")}
-        </M.SubTrigger>
-        <M.SubContent>
-          <M.Item onSelect={() => onSetReminder(null)}>
-            {t("editor.reminderNone")}
-          </M.Item>
-          {REMINDER_LEADS.map((lead) => (
-            <M.Item key={lead} onSelect={() => onSetReminder(lead)}>
-              {t(`reminder.lead${lead}` as MessageKey)}
+      {todo.dueDate && todo.dueTime && (
+        <M.Sub>
+          <M.SubTrigger>
+            <Bell className="h-4 w-4" aria-hidden="true" />
+            {t("editor.reminder")}
+          </M.SubTrigger>
+          <M.SubContent>
+            <M.Item onSelect={() => onSetReminder(null)}>
+              {t("editor.reminderNone")}
             </M.Item>
-          ))}
-        </M.SubContent>
-      </M.Sub>
+            {REMINDER_LEADS.map((lead) => (
+              <M.Item key={lead} onSelect={() => onSetReminder(lead)}>
+                {t(`reminder.lead${lead}` as MessageKey)}
+              </M.Item>
+            ))}
+          </M.SubContent>
+        </M.Sub>
+      )}
 
       <M.Separator />
 
@@ -605,6 +623,7 @@ export interface TodoRowProps {
   onSetPriority: (id: string, priority: Priority) => void;
   onSetDue: (id: string, due: string | null) => void;
   onSetReminder: (id: string, remindBefore: number | null) => void;
+  onSkipOccurrence: (id: string) => void;
 }
 
 /**
@@ -637,6 +656,7 @@ export const TodoRow = memo(function TodoRow(props: TodoRowProps) {
       onSetPriority={(p) => props.onSetPriority(id, p)}
       onSetDue={(d) => props.onSetDue(id, d)}
       onSetReminder={(lead) => props.onSetReminder(id, lead)}
+      onSkipOccurrence={() => props.onSkipOccurrence(id)}
     />
   );
 });

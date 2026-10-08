@@ -488,6 +488,28 @@ export function useTodoStore(lang: Language) {
     [patchTodos, state.todos]
   );
 
+  /**
+   * Skips a repeating task's current occurrence: its next occurrence is
+   * spawned exactly as a completion would spawn it, but the instance itself
+   * vanishes instead of settling into 已完成 — "this week's meeting is off"
+   * is a fact about this week, not a completion, and the stats must never
+   * count one. The spawned task takes the old slot, so the list does not
+   * jump. Returns the spawned task for the undo toast; a task whose rule
+   * names no next day is left untouched — skipping it would just be a
+   * silent delete.
+   */
+  const skipOccurrence = useCallback(
+    (id: string): Todo | undefined => {
+      const target = state.todos.find((t) => t.id === id);
+      if (!target) return undefined;
+      const spawned = spawnNextOccurrence(target);
+      if (!spawned) return undefined;
+      patchTodos((todos) => todos.map((t) => (t.id === id ? spawned : t)));
+      return spawned;
+    },
+    [patchTodos, state.todos]
+  );
+
   const duplicateTodo = useCallback(
     (id: string): Todo | undefined => {
       const source = state.todos.find((t) => t.id === id);
@@ -668,6 +690,7 @@ export function useTodoStore(lang: Language) {
     toggleTodo,
     toggleStar,
     toggleSubtask,
+    skipOccurrence,
     removeTodo,
     duplicateTodo,
     restoreTodos,

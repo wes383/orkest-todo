@@ -351,7 +351,23 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
                 {pick(locale, "清除", "Clear")}
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                // OK means "take what the wheels show". With no value yet the
+                // wheels display the parse fallback (09:00), but the wheels
+                // only speak on scroll — a plain OK would close the popover
+                // and silently discard the very time the reader is looking
+                // at. So confirming an empty value commits what is shown.
+                if (!value) {
+                  commit(
+                    `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+                  );
+                }
+                setOpen(false);
+              }}
+            >
               {pick(locale, "确定", "OK")}
             </Button>
           </div>

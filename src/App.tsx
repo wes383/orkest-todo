@@ -142,6 +142,7 @@ export default function App() {
     toggleTodo,
     toggleStar,
     toggleSubtask,
+    skipOccurrence,
     removeTodo,
     duplicateTodo,
     restoreTodos,
@@ -371,8 +372,12 @@ export default function App() {
   const footCountIsRepeated =
     canClearCompleted && visible.length === stats.done;
 
-  /** List a brand-new task should land in. */
-  const targetListId = filters.listId ?? lists[0]?.id ?? "";
+  /** List a brand-new task should land in. Archived lists are skipped: a new
+      task cannot be filed into an archive (the editor's dropdown offers active
+      lists only), so a default pointing at one would render the selector
+      blank in 全部任务 and file the task into a list nobody can see. */
+  const targetListId =
+    filters.listId ?? lists.find((l) => l.archivedAt === null)?.id ?? "";
   const targetListName =
     lists.find((l) => l.id === targetListId)?.name ?? t("list.defaultName");
 
@@ -757,6 +762,33 @@ export default function App() {
       });
     },
     [toggleSubtask, removeTodo, t]
+  );
+
+  /**
+   * The repeating task's "not this week". The next occurrence is spawned
+   * exactly as a completion would, but the instance vanishes instead of
+   * settling into 已完成, so the stats never see a completion that never
+   * happened. The undo is complete — spawned task removed *and* the original
+   * restored — unlike the completion toast's, because here the original has
+   * no other record left behind.
+   */
+  const handleSkipOccurrence = useCallback(
+    (id: string) => {
+      const original = todos.find((t) => t.id === id);
+      const spawned = skipOccurrence(id);
+      if (!original || !spawned) return;
+      toast.success(t("toast.occurrenceSkipped"), {
+        description: spawned.title,
+        action: {
+          label: t("common.undo"),
+          onClick: () => {
+            removeTodo(spawned.id);
+            restoreTodos([original]);
+          },
+        },
+      });
+    },
+    [todos, skipOccurrence, removeTodo, restoreTodos, t]
   );
 
   /** Id-first handlers for the memoised rows: the same writes the per-item
@@ -1339,6 +1371,7 @@ export default function App() {
                       onSetPriority={handleSetPriority}
                       onSetDue={handleSetDue}
                       onSetReminder={handleSetReminder}
+                      onSkipOccurrence={handleSkipOccurrence}
                     />
                   )}
                 />

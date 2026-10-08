@@ -358,6 +358,7 @@ const zh = {
   "todo.duplicateTitle": "{title}（副本）",
   "todo.duePresets": "快速设置",
   "todo.clearDueDate": "清除日期",
+  "todo.skipOccurrence": "跳过本次",
 
   /* ── Quick add ───────────────────────────────────────────── */
   "quickAdd.placeholder": "添加任务，按 Enter 保存…",
@@ -408,6 +409,7 @@ const zh = {
   "recur.hint": "完成后会自动创建下一次任务",
   "recur.needsDue": "先设置截止日期，才能设置重复",
   "toast.recurSpawned": "已完成，已生成下一次任务",
+  "toast.occurrenceSkipped": "已跳过本次，下一次任务已生成",
   "editor.tagsPlaceholder": "例如：汇报",
   "editor.subtasksLabel": "子任务",
   "editor.subtaskPlaceholder": "拆解成可执行的小步骤",
@@ -1002,6 +1004,7 @@ const en: Record<MessageKey, Message> = {
   "todo.duplicateTitle": "{title} (copy)",
   "todo.duePresets": "Quick set",
   "todo.clearDueDate": "Clear date",
+  "todo.skipOccurrence": "Skip this occurrence",
 
   /* ── Quick add ───────────────────────────────────────────── */
   "quickAdd.placeholder": "Add a task, press Enter to save…",
@@ -1052,6 +1055,7 @@ const en: Record<MessageKey, Message> = {
   "recur.hint": "The next occurrence is created automatically on completion",
   "recur.needsDue": "Set a due date first to make it repeat",
   "toast.recurSpawned": "Completed — next occurrence added",
+  "toast.occurrenceSkipped": "Skipped — next occurrence added",
   "editor.tagsPlaceholder": "e.g. reporting",
   "editor.subtasksLabel": "Subtasks",
   "editor.subtaskPlaceholder": "Break it into small, doable steps",
