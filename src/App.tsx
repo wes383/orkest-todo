@@ -57,6 +57,13 @@ const CalendarView = lazy(() =>
   import("@/components/todo/calendar-view").then((m) => ({ default: m.CalendarView }))
 );
 /*
+ * The archive screen is a rare destination, not a daily one — its rows wait
+ * off in their own chunk until the sidebar's archive door opens.
+ */
+const ArchiveView = lazy(() =>
+  import("@/components/todo/archive-view").then((m) => ({ default: m.ArchiveView }))
+);
+/*
  * The editor brings the date/time pickers and react-day-picker with it —
  * none of which the task list needs. It renders only while open, so the chunk
  * loads on the first open and never before.
@@ -141,6 +148,7 @@ export default function App() {
     addList,
     updateList,
     bumpGoalCurrent,
+    setListArchived,
     moveList,
     removeList,
   } = store;
@@ -152,6 +160,7 @@ export default function App() {
   const {
     settings,
     setViewVisible,
+    setScreenVisible,
     setSpanLimits,
     setWidgetOpacity,
     setQuitStopsFocus,
@@ -269,13 +278,37 @@ export default function App() {
    */
   const today = useTodayISO();
 
-  const stats = useMemo(() => computeStats(todos), [todos, today]);
-  const counts = useMemo(() => viewCounts(todos), [todos, today]);
-  const listCounts = useMemo(() => computeListCounts(todos), [todos]);
-  const tags = useMemo(() => collectTags(todos, language), [todos, language]);
+  /*
+   * Archived lists step out of the working surfaces — sidebar, tasks screen,
+   * the focus binding — but keep their history everywhere else (stats, the
+   * archive screen itself). Every count and selection below therefore reads
+   * `activeTodos`, tasks whose list has not been archived; the stats screen
+   * and the archive page still receive the raw `todos`.
+   */
+  const activeLists = useMemo(() => {
+    const set = new Set<string>();
+    for (const list of lists) if (list.archivedAt === null) set.add(list.id);
+    return set;
+  }, [lists]);
+  const archivedLists = useMemo(
+    () =>
+      lists
+        .filter((list) => list.archivedAt !== null)
+        .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0)),
+    [lists]
+  );
+  const activeTodos = useMemo(
+    () => todos.filter((todo) => activeLists.has(todo.listId)),
+    [todos, activeLists]
+  );
+
+  const stats = useMemo(() => computeStats(activeTodos), [activeTodos, today]);
+  const counts = useMemo(() => viewCounts(activeTodos), [activeTodos, today]);
+  const listCounts = useMemo(() => computeListCounts(activeTodos), [activeTodos]);
+  const tags = useMemo(() => collectTags(activeTodos, language), [activeTodos, language]);
   const visible = useMemo(
-    () => selectTodos(todos, filters, language),
-    [todos, filters, today, language]
+    () => selectTodos(activeTodos, filters, language),
+    [activeTodos, filters, today, language]
   );
 
   const grouped = useMemo(() => {
@@ -381,6 +414,44 @@ export default function App() {
     setListDialogOpen(true);
   }, [activeGoalList]);
 
+  /**
+   * Archiving from the sidebar's ⋯ / right-click. If the archived list is the
+   * one on screen, the selection dissolves back to 所有清单 — the row it was
+   * pinned to is about to vanish, and a dead filter would show an empty page
+   * with no way out.
+   */
+  const handleArchiveList = useCallback(
+    (list: TodoList) => {
+      setListArchived(list.id, true);
+      setFilters((f) => (f.listId === list.id ? { ...f, listId: null } : f));
+      toast(t("toast.listArchived"), { description: list.name });
+    },
+    [setListArchived, t]
+  );
+
+  const handleUnarchiveList = useCallback(
+    (list: TodoList) => {
+      setListArchived(list.id, false);
+      toast.success(t("toast.listUnarchived"), { description: list.name });
+    },
+    [setListArchived, t]
+  );
+
+  /**
+   * The task editor's list options: active lists only — a new task cannot be
+   * filed into an archive — except when the task being edited already lives
+   * on an archived list, whose row must stay selectable or the dropdown would
+   * silently blank out.
+   */
+  const editorListOptions = useMemo(() => {
+    const active = lists.filter((list) => list.archivedAt === null);
+    const currentId = editing?.listId;
+    if (!currentId) return active;
+    const current = lists.find((list) => list.id === currentId);
+    if (current && current.archivedAt !== null) return [...active, current];
+    return active;
+  }, [lists, editing]);
+
   /** The banner's ± buttons: a queued functional step in the store, so a
       burst of clicks outpacing the renders still lands every one of them. */
   const handleGoalStep = useCallback(
@@ -453,14 +524,17 @@ export default function App() {
   /*
    * Starting focus files the stretch under the list of the most recent
    * stretch — the thing the user was last focusing on — rather than the
-   * sidebar's current selection. A list that has since been deleted falls
-   * back to unassigned. Before the first ever session there is nothing to
-   * remember, so that first stretch is unassigned too.
+   * sidebar's current selection. A list that has since been deleted — or been
+   * archived, which withdraws it from the focus binding — falls back to
+   * unassigned. Before the first ever session there is nothing to remember,
+   * so that first stretch is unassigned too.
    */
   const lastFocusListId = useMemo(() => {
     const last = focus.spans[focus.spans.length - 1];
     if (!last) return null;
-    return lists.some((list) => list.id === last.listId) ? last.listId : null;
+    return lists.some((list) => list.id === last.listId && list.archivedAt === null)
+      ? last.listId
+      : null;
   }, [focus.spans, lists]);
 
   /*
@@ -797,6 +871,30 @@ export default function App() {
     [filters.listId, lists, removeList, focus, t]
   );
 
+  /*
+   * Deleting from the archive takes the tasks with it. An archived list is a
+   * closed chapter — its tasks re-homing onto an active one would spill them
+   * back onto the tasks screen, the exact noise the archive exists to quiet.
+   * The focus log still only loses the label, same as every other deletion.
+   */
+  const handleDeleteArchivedList = useCallback(
+    (list: TodoList) => {
+      if (lists.length <= 1) {
+        toast(t("sidebar.deleteLastTitle", { name: list.name }), {
+          description: t("sidebar.deleteLastBody"),
+        });
+        return;
+      }
+      const count = todos.filter((todo) => todo.listId === list.id).length;
+      removeList(list.id, { deleteTodos: true });
+      focus.forgetList(list.id);
+      toast(t("toast.listDeleted"), {
+        description: t("toast.listDeletedWithTasks", { count }),
+      });
+    },
+    [lists, todos, removeList, focus, t]
+  );
+
   /* ── Command palette ─────────────────────────────────────── */
 
   const { setTheme } = useAppTheme();
@@ -993,7 +1091,7 @@ export default function App() {
       <DensityProvider>
       <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
         <Sidebar
-          lists={lists}
+          lists={lists.filter((list) => list.archivedAt === null)}
           counts={counts}
           listCounts={listCounts}
           goalProgress={goalProgress}
@@ -1004,9 +1102,16 @@ export default function App() {
           onSelectCalendar={() => setScreen("calendar")}
           onSelectFocus={() => setScreen("focus")}
           onSelectStats={() => setScreen("stats")}
+          onSelectArchive={() => setScreen("archive")}
           onSelectSettings={() => setScreen("settings")}
           onSelectView={selectView}
           onHideView={(view) => setViewVisible(view, false)}
+          onHideScreen={(screenName) => {
+            setScreenVisible(screenName, false);
+            // Hiding the screen you are standing in would strand the window on
+            // a row-less destination — step back to the tasks screen instead.
+            setScreen((cur) => (cur === screenName ? "todos" : cur));
+          }}
           onSelectList={selectList}
           onCreateList={() => {
             setEditingList(null);
@@ -1017,6 +1122,7 @@ export default function App() {
             setListDialogOpen(true);
           }}
           onDeleteList={handleListDelete}
+          onArchiveList={handleArchiveList}
           onReorderLists={handleReorderLists}
           onResizeSidebar={setSidebarWidth}
         />
@@ -1041,10 +1147,19 @@ export default function App() {
               onToggleSubtask={handleToggleSubtask}
             />
           </Suspense>
+        ) : screen === "archive" ? (
+          <Suspense fallback={<main className="h-full min-w-0 flex-1 bg-background" />}>
+            <ArchiveView
+              lists={archivedLists}
+              todos={todos}
+              onUnarchive={handleUnarchiveList}
+              onDelete={handleDeleteArchivedList}
+            />
+          </Suspense>
         ) : screen === "focus" ? (
           <FocusView
             store={focus}
-            lists={lists}
+            lists={lists.filter((list) => list.archivedAt === null)}
             defaultListId={lastFocusListId}
             onOpenStats={() => setScreen("stats")}
             hideShortcutHints={settings.hideShortcutHints}
@@ -1070,6 +1185,7 @@ export default function App() {
               lists={lists}
               settings={settings}
               setViewVisible={setViewVisible}
+              setScreenVisible={setScreenVisible}
               setSpanLimits={setSpanLimits}
               setWidgetOpacity={setWidgetOpacity}
               setQuitStopsFocus={setQuitStopsFocus}
@@ -1250,7 +1366,7 @@ export default function App() {
             open={editorOpen}
             onOpenChange={setEditorOpen}
             todo={editing}
-            lists={lists}
+            lists={editorListOptions}
             defaultListId={editing?.listId ?? targetListId}
             defaultDueDate={editing ? null : editorDueDate}
             hideShortcutHints={settings.hideShortcutHints}

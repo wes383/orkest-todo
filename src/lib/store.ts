@@ -96,9 +96,9 @@ interface Seed {
 const SEED: Record<Language, Seed> = {
   zh: {
     lists: [
-      { id: WORK_LIST, name: "工作", color: "indigo", goal: null },
-      { id: LIFE_LIST, name: "生活", color: "emerald", goal: null },
-      { id: SHOPPING_LIST, name: "购物", color: "amber", goal: null },
+      { id: WORK_LIST, name: "工作", color: "indigo", goal: null, archivedAt: null },
+      { id: LIFE_LIST, name: "生活", color: "emerald", goal: null, archivedAt: null },
+      { id: SHOPPING_LIST, name: "购物", color: "amber", goal: null, archivedAt: null },
     ],
     todos: [
       {
@@ -164,9 +164,9 @@ const SEED: Record<Language, Seed> = {
   },
   en: {
     lists: [
-      { id: WORK_LIST, name: "Work", color: "indigo", goal: null },
-      { id: LIFE_LIST, name: "Personal", color: "emerald", goal: null },
-      { id: SHOPPING_LIST, name: "Shopping", color: "amber", goal: null },
+      { id: WORK_LIST, name: "Work", color: "indigo", goal: null, archivedAt: null },
+      { id: LIFE_LIST, name: "Personal", color: "emerald", goal: null, archivedAt: null },
+      { id: SHOPPING_LIST, name: "Shopping", color: "amber", goal: null, archivedAt: null },
     ],
     todos: [
       {
@@ -289,8 +289,10 @@ function load(lang: Language): PersistedState {
       lists: (parsed.lists.length > 0 ? parsed.lists : SEED[lang].lists).map(
         (list) => ({
           ...list,
-          // `unit` postdates the first goal release — old storage omits it.
+          // `goal` and `archivedAt` postdate the first release — old storage
+          // omits them.
           goal: list.goal ? { ...list.goal, unit: list.goal.unit ?? "" } : null,
+          archivedAt: list.archivedAt ?? null,
         })
       ),
     };
@@ -513,7 +515,13 @@ export function useTodoStore(lang: Language) {
 
   const addList = useCallback(
     (name: string, color: TodoList["color"], goal: GoalConfig | null = null): TodoList => {
-      const list: TodoList = { id: uid("list"), name: name.trim(), color, goal };
+      const list: TodoList = {
+        id: uid("list"),
+        name: name.trim(),
+        color,
+        goal,
+        archivedAt: null,
+      };
       setState((s) => ({ ...s, lists: [...s.lists, list] }));
       return list;
     },
@@ -524,6 +532,21 @@ export function useTodoStore(lang: Language) {
     setState((s) => ({
       ...s,
       lists: s.lists.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+    }));
+  }, []);
+
+  /**
+   * Archives (or restores) a list. Archived, the list and its tasks step out
+   * of the sidebar, the tasks screen and the focus binding — but never out of
+   * the stats, which keep counting history. The timestamp only orders the
+   * archive page, most recent first.
+   */
+  const setListArchived = useCallback((id: string, archived: boolean) => {
+    setState((s) => ({
+      ...s,
+      lists: s.lists.map((l) =>
+        l.id === id ? { ...l, archivedAt: archived ? Date.now() : null } : l
+      ),
     }));
   }, []);
 
@@ -576,9 +599,18 @@ export function useTodoStore(lang: Language) {
    * functions during commit, not at call time.
    */
   const removeList = useCallback(
-    (id: string): { movedTo: string } => {
+    (
+      id: string,
+      opts?: { deleteTodos?: boolean }
+    ): { movedTo: string | null } => {
       const remaining = state.lists.filter((l) => l.id !== id);
-      const fallback = remaining[0]?.id ?? FALLBACK_LIST_ID;
+      /* An active list first: re-homing into an archived list would file the
+         tasks somewhere the tasks screen never shows. Only when every
+         remaining list is archived does an archived one take them. */
+      const fallback =
+        (remaining.find((l) => l.archivedAt === null) ?? remaining[0])?.id ??
+        FALLBACK_LIST_ID;
+      const deleteTodos = opts?.deleteTodos ?? false;
       setState((s) => ({
         ...s,
         // A floor, not a feature: nothing in the UI deletes the last list any
@@ -586,11 +618,13 @@ export function useTodoStore(lang: Language) {
         // "there is always a list to file into" invariant true if a caller ever
         // slips past — seeding beats leaving quick-add with nowhere to write.
         lists: remaining.length > 0 ? remaining : SEED[lang].lists,
-        todos: s.todos.map((t) =>
-          t.listId === id ? { ...t, listId: fallback } : t
-        ),
+        todos: deleteTodos
+          ? s.todos.filter((t) => t.listId !== id)
+          : s.todos.map((t) =>
+              t.listId === id ? { ...t, listId: fallback } : t
+            ),
       }));
-      return { movedTo: fallback };
+      return { movedTo: deleteTodos ? null : fallback };
     },
     [state.lists, lang]
   );
@@ -623,6 +657,7 @@ export function useTodoStore(lang: Language) {
     addList,
     updateList,
     bumpGoalCurrent,
+    setListArchived,
     moveList,
     removeList,
     clearAll,

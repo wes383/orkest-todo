@@ -45,8 +45,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Timer } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Timer } from "lucide-react";
 import { AddSpanDialog } from "@/components/focus/add-span-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -1031,19 +1041,43 @@ export function FocusStats({
     });
   }, [chartBars, tasks]);
 
-  const scopeOptions: {
-    key: Scope;
-    label: string;
-    /** The dot's colour, already resolved to CSS. Absent on "all". */
-    color?: string;
-  }[] = [
-    { key: SCOPE_ALL, label: t("focus.log.scopeAll") },
-    ...lists.map((list) => ({
-      key: list.id as Scope,
-      label: list.name,
-      color: paletteVar(list.color),
-    })),
-  ];
+  /*
+   * The scope picker's menu. Active lists sit at the top level; archived ones
+   * fold into a submenu — still selectable (history does not vanish when a
+   * list is archived) but out of the way of the everyday choice.
+   */
+  const activeListOptions = useMemo(
+    () => lists.filter((list) => list.archivedAt === null),
+    [lists]
+  );
+  const archivedListOptions = useMemo(
+    () => lists.filter((list) => list.archivedAt !== null),
+    [lists]
+  );
+
+  const scopeLabel =
+    effectiveScope === SCOPE_ALL
+      ? t("focus.log.scopeAll")
+      : effectiveScope === SCOPE_UNASSIGNED
+        ? t("focus.unassigned")
+        : (lists.find((list) => list.id === effectiveScope)?.name ??
+          t("focus.log.scopeAll"));
+  const scopeColor =
+    effectiveScope === SCOPE_ALL || effectiveScope === SCOPE_UNASSIGNED
+      ? undefined
+      : paletteVar(lists.find((list) => list.id === effectiveScope)?.color ?? "indigo");
+
+  /** The one menu body both the top level and the archive submenu share. */
+  const scopeItem = (list: (typeof lists)[number]) => (
+    <DropdownMenuItem key={list.id} onSelect={() => setScope(list.id as Scope)}>
+      <span
+        aria-hidden="true"
+        className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: paletteVar(list.color) }}
+      />
+      {list.name}
+    </DropdownMenuItem>
+  );
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground">
@@ -1076,35 +1110,47 @@ export function FocusStats({
                   <Card
                     title={t("focus.log.byList")}
                     action={
-                      <Select
-                        value={effectiveScope}
-                        onValueChange={(next) => {
-                          setConfirming(null);
-                          setRefused(null);
-                          setScope(next);
-                        }}
-                      >
-                        <SelectTrigger
-                          aria-label={t("focus.log.scope")}
-                          className="h-8 w-auto min-w-[9rem] gap-1.5 rounded-md px-2.5 py-0 text-xs"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {scopeOptions.map((option) => (
-                            <SelectItem key={option.key} value={option.key}>
-                              {option.color !== undefined && (
-                                <span
-                                  aria-hidden="true"
-                                  className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
-                                  style={{ backgroundColor: option.color }}
-                                />
-                              )}
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            aria-label={t("focus.log.scope")}
+                            className="h-8 w-auto min-w-[9rem] gap-1.5 rounded-md px-2.5 py-0 text-xs font-normal"
+                          >
+                            {scopeColor !== undefined && (
+                              <span
+                                aria-hidden="true"
+                                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: scopeColor }}
+                              />
+                            )}
+                            <span className="truncate">{scopeLabel}</span>
+                            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-foreground-subtle" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setConfirming(null);
+                              setRefused(null);
+                              setScope(SCOPE_ALL);
+                            }}
+                          >
+                            {t("focus.log.scopeAll")}
+                          </DropdownMenuItem>
+                          {activeListOptions.map(scopeItem)}
+                          {archivedListOptions.length > 0 && (
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>
+                                {t("stats.archivedGroup")}
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                {archivedListOptions.map(scopeItem)}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     }
                   >
                     {listTotals.length === 0 ? (
@@ -1955,7 +2001,7 @@ export function FocusStats({
       <AddSpanDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        lists={lists}
+        lists={activeListOptions}
         onAdd={onAddManual}
       />
     </main>

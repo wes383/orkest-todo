@@ -21,9 +21,25 @@ export const HIDEABLE_VIEWS: HideableView[] = [
   "completed",
 ];
 
+/** The footer doors a user may hide — the screens that are not filters over
+    the tasks. 设置 stays out: it is the way back in, and hiding it would
+    strand the very switches that un-hide the rest. */
+export type HideableScreen = "calendar" | "focus" | "stats" | "archive";
+
+export const HIDEABLE_SCREENS: HideableScreen[] = [
+  "calendar",
+  "focus",
+  "stats",
+  "archive",
+];
+
 export interface AppSettings {
   /** `true` = the view's row is not printed in the sidebar. */
   hiddenViews: Record<HideableView, boolean>;
+  /** `true` = the screen's door is not printed in the sidebar's footer. The
+      screens themselves stay reachable — the command palette and the settings
+      page never ask the sidebar for permission. */
+  hiddenScreens: Record<HideableScreen, boolean>;
   /** The focus log's two rules, in the units they are spoken in: a finished
       stretch shorter than `minSpanMinutes` is dropped as if the break had
       simply carried on, and a stretch that is still running is credited up to
@@ -104,6 +120,12 @@ const DEFAULTS: AppSettings = {
     starred: false,
     completed: false,
   },
+  hiddenScreens: {
+    calendar: false,
+    focus: false,
+    stats: false,
+    archive: false,
+  },
   minSpanMinutes: DEFAULT_MIN_SPAN_MINUTES,
   maxSpanHours: 8,
   globalShortcuts: true,
@@ -156,6 +178,10 @@ function load(): AppSettings {
       hiddenViews: {
         ...DEFAULTS.hiddenViews,
         ...(parsed.hiddenViews ?? {}),
+      },
+      hiddenScreens: {
+        ...DEFAULTS.hiddenScreens,
+        ...(parsed.hiddenScreens ?? {}),
       },
       minSpanMinutes: num(parsed.minSpanMinutes, DEFAULTS.minSpanMinutes, 0, 1440),
       maxSpanHours: num(parsed.maxSpanHours, DEFAULTS.maxSpanHours, 1, 24),
@@ -225,6 +251,16 @@ export function useSettings() {
     []
   );
 
+  const setScreenVisible = useCallback(
+    (screen: HideableScreen, visible: boolean) => {
+      setSettings((s) => ({
+        ...s,
+        hiddenScreens: { ...s.hiddenScreens, [screen]: !visible },
+      }));
+    },
+    []
+  );
+
   const setSpanLimits = useCallback(
     (minSpanMinutes: number, maxSpanHours: number) => {
       setSettings((s) => ({ ...s, minSpanMinutes, maxSpanHours }));
@@ -270,6 +306,7 @@ export function useSettings() {
   return {
     settings,
     setViewVisible,
+    setScreenVisible,
     setSpanLimits,
     setWidgetOpacity,
     setQuitStopsFocus,

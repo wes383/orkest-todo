@@ -56,7 +56,14 @@ import type { FocusSpan } from "@/lib/focus-spans";
 import { chordModifier } from "@/lib/global-shortcut";
 import { useI18n } from "@/lib/i18n";
 import { LANGUAGES, LANGUAGE_LABELS, LOCALES, type MessageKey } from "@/lib/messages";
-import { HIDEABLE_VIEWS, MIN_WIDGET_OPACITY, type AppSettings, type HideableView } from "@/lib/settings";
+import {
+  HIDEABLE_SCREENS,
+  HIDEABLE_VIEWS,
+  MIN_WIDGET_OPACITY,
+  type AppSettings,
+  type HideableScreen,
+  type HideableView,
+} from "@/lib/settings";
 import { formatCode } from "@/lib/sync/config";
 import { APP_VERSION } from "@/lib/version";
 import type { SyncControls, SyncStatus } from "@/lib/sync/engine";
@@ -69,6 +76,15 @@ const HIDEABLE_LABEL_KEYS: Record<HideableView, MessageKey> = {
   overdue: "view.overdue",
   starred: "view.starred",
   completed: "view.completed",
+};
+
+/** Which sidebar row each hideable screen names — the same rule as the
+    views' map above, so the settings page and the footer cannot drift. */
+const HIDEABLE_SCREEN_LABEL_KEYS: Record<HideableScreen, MessageKey> = {
+  calendar: "screen.calendar",
+  focus: "focus.title",
+  stats: "screen.stats",
+  archive: "screen.archive",
 };
 
 /** Clamp a typed number into its range — the settings page's own guard, so a
@@ -187,6 +203,8 @@ export interface SettingsViewProps {
   /** Owned by App, so the sidebar answers the moment a toggle moves. */
   settings: AppSettings;
   setViewVisible: (view: HideableView, visible: boolean) => void;
+  /** Same, for the footer's four doors — the screens that are not filters. */
+  setScreenVisible: (screen: HideableScreen, visible: boolean) => void;
   /** The focus rules the log reads live; see `settings.ts`. */
   setSpanLimits: (minSpanMinutes: number, maxSpanHours: number) => void;
   /** The focus widget pill's alpha, as a percentage — 100 is opaque. It travels
@@ -249,6 +267,7 @@ export function SettingsView({
   lists,
   settings,
   setViewVisible,
+  setScreenVisible,
   setSpanLimits,
   setWidgetOpacity,
   setQuitStopsFocus,
@@ -509,6 +528,25 @@ export function SettingsView({
                     checked={!settings.hiddenViews[view]}
                     onCheckedChange={(visible) => setViewVisible(view, visible)}
                     aria-label={t(HIDEABLE_LABEL_KEYS[view])}
+                  />
+                </Row>
+              ))}
+              {/* The footer's doors: the same switches, for the screens that
+                  are not filters. 设置 is not among them — it is the way back
+                  in, and hiding it would strand the rest. */}
+              {HIDEABLE_SCREENS.map((screen) => (
+                <Row
+                  key={screen}
+                  label={t(HIDEABLE_SCREEN_LABEL_KEYS[screen])}
+                  htmlFor={`settings-sidebar-screen-${screen}`}
+                >
+                  <Switch
+                    id={`settings-sidebar-screen-${screen}`}
+                    checked={!settings.hiddenScreens[screen]}
+                    onCheckedChange={(visible) =>
+                      setScreenVisible(screen, visible)
+                    }
+                    aria-label={t(HIDEABLE_SCREEN_LABEL_KEYS[screen])}
                   />
                 </Row>
               ))}

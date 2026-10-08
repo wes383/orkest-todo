@@ -2,6 +2,7 @@ import * as React from "react";
 import { useState } from "react";
 import {
   AlertTriangle,
+  Archive,
   BarChart3,
   Calendar,
   CalendarClock,
@@ -53,6 +54,7 @@ import {
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
   type AppSettings,
+  type HideableScreen,
   type HideableView,
 } from "@/lib/settings";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -229,15 +231,20 @@ export interface SidebarProps {
   onSelectCalendar: () => void;
   onSelectFocus: () => void;
   onSelectStats: () => void;
+  onSelectArchive: () => void;
   onSelectSettings: () => void;
   onSelectView: (view: ViewId) => void;
   /** Right-click on a hideable view row: the same hide the settings page
       offers, without the trip there. */
   onHideView: (view: HideableView) => void;
+  /** Right-click on one of the footer's doors: hides that screen's row. */
+  onHideScreen: (screen: HideableScreen) => void;
   onSelectList: (listId: string | null) => void;
   onCreateList: () => void;
   onEditList: (list: TodoList) => void;
   onDeleteList: (list: TodoList) => void;
+  /** Sends a list (goal or plain) to the archive screen. */
+  onArchiveList: (list: TodoList) => void;
   /** Drop one list above/below another — the drag handle's whole story. */
   onReorderLists: (
     dragId: string,
@@ -260,20 +267,37 @@ export function Sidebar({
   onSelectCalendar,
   onSelectFocus,
   onSelectStats,
+  onSelectArchive,
   onSelectSettings,
   onSelectView,
   onHideView,
+  onHideScreen,
   onSelectList,
   onCreateList,
   onEditList,
   onDeleteList,
+  onArchiveList,
   onReorderLists,
   onResizeSidebar,
 }: SidebarProps) {
   const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<TodoList | null>(null);
+  /** Archiving asks first, like deleting does — the row's menu items only
+      stage the question, the dialog below answers it. */
+  const [pendingArchive, setPendingArchive] = useState<TodoList | null>(null);
   /** The settings toggle that quiets every right-edge number in one go. */
   const hideCounts = settings.hideSidebarCounts;
+  /** The footer doors the settings page has hidden — rows not printed. */
+  const hiddenScreens = settings.hiddenScreens;
+
+  /** One hide item, four doors: the same offer a view row's right-click
+      makes, for the screens that are not filters over the tasks. */
+  const hideScreenItem = (screen: HideableScreen) => (
+    <ContextMenuItem onSelect={() => onHideScreen(screen)}>
+      <Icon icon={EyeOff} size="sm" />
+      {t("sidebar.hideScreen")}
+    </ContextMenuItem>
+  );
 
   /*
    * Drag-to-reorder, held in two pieces: which row is being dragged, and
@@ -744,6 +768,12 @@ export function Sidebar({
                             {t("sidebar.renameList")}
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            onSelect={() => setPendingArchive(list)}
+                          >
+                            <Icon icon={Archive} size="sm" />
+                            {t("sidebar.archiveList")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             variant="destructive"
                             onSelect={() => setPendingDelete(list)}
                           >
@@ -770,6 +800,12 @@ export function Sidebar({
                         <ContextMenuItem onSelect={() => onEditList(list)}>
                           <Icon icon={Pencil} size="sm" />
                           {t("sidebar.renameList")}
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() => setPendingArchive(list)}
+                        >
+                          <Icon icon={Archive} size="sm" />
+                          {t("sidebar.archiveList")}
                         </ContextMenuItem>
                         <ContextMenuItem
                           variant="destructive"
@@ -832,71 +868,105 @@ export function Sidebar({
         >
           {/* The task side's second shape: not a filter over the list but the
               month the list is due on, so it stands with the screens at the
-              foot rather than with the views above. */}
-          <RailTip
-            label={t("screen.calendar")}
-            collapsed={collapsed}
-            button={(railLabel) => (
-              <button
-                type="button"
-                onClick={onSelectCalendar}
-                aria-current={screen === "calendar" ? "page" : undefined}
-                aria-label={railLabel}
-                className={rowClass(screen === "calendar")}
-              >
-                <Icon icon={Calendar} size="sm" />
-                {!collapsed && (
-                  <span className="flex-1 truncate text-left">
-                    {t("screen.calendar")}
-                  </span>
-                )}
-              </button>
-            )}
-          />
+              foot rather than with the views above. Hidden by the settings
+              page or its own right-click. */}
+          {!hiddenScreens.calendar && (
+            <RailTip
+              label={t("screen.calendar")}
+              collapsed={collapsed}
+              button={(railLabel) => (
+                <button
+                  type="button"
+                  onClick={onSelectCalendar}
+                  aria-current={screen === "calendar" ? "page" : undefined}
+                  aria-label={railLabel}
+                  className={rowClass(screen === "calendar")}
+                >
+                  <Icon icon={Calendar} size="sm" />
+                  {!collapsed && (
+                    <span className="flex-1 truncate text-left">
+                      {t("screen.calendar")}
+                    </span>
+                  )}
+                </button>
+              )}
+              menu={hideScreenItem("calendar")}
+            />
+          )}
           {/* No count on focus, either. Every view row above carries a number
               of tasks; the focus screen has none to carry, and a `0` there
               would be a lie rather than an absence. And no green on the icon —
               every row here lets its icon take the row's colour. */}
-          <RailTip
-            label={t("focus.title")}
-            collapsed={collapsed}
-            button={(railLabel) => (
-              <button
-                type="button"
-                onClick={onSelectFocus}
-                aria-current={screen === "focus" ? "page" : undefined}
-                aria-label={railLabel}
-                className={rowClass(screen === "focus")}
-              >
-                <Icon icon={Timer} size="sm" />
-                {!collapsed && (
-                  <span className="flex-1 truncate text-left">
-                    {t("focus.title")}
-                  </span>
-                )}
-              </button>
-            )}
-          />
-          <RailTip
-            label={t("screen.stats")}
-            collapsed={collapsed}
-            button={(railLabel) => (
-              <button
-                type="button"
-                onClick={onSelectStats}
-                aria-current={screen === "stats" ? "page" : undefined}
-                aria-label={railLabel}
-                className={rowClass(screen === "stats")}
-              >
-                <Icon icon={BarChart3} size="sm" />
-                {!collapsed && (
-                  <span className="flex-1 truncate text-left">
-                    {t("screen.stats")}
-                  </span>
-                )}
-              </button>
-            )}
-          />
+          {!hiddenScreens.focus && (
+            <RailTip
+              label={t("focus.title")}
+              collapsed={collapsed}
+              button={(railLabel) => (
+                <button
+                  type="button"
+                  onClick={onSelectFocus}
+                  aria-current={screen === "focus" ? "page" : undefined}
+                  aria-label={railLabel}
+                  className={rowClass(screen === "focus")}
+                >
+                  <Icon icon={Timer} size="sm" />
+                  {!collapsed && (
+                    <span className="flex-1 truncate text-left">
+                      {t("focus.title")}
+                    </span>
+                  )}
+                </button>
+              )}
+              menu={hideScreenItem("focus")}
+            />
+          )}
+          {!hiddenScreens.stats && (
+            <RailTip
+              label={t("screen.stats")}
+              collapsed={collapsed}
+              button={(railLabel) => (
+                <button
+                  type="button"
+                  onClick={onSelectStats}
+                  aria-current={screen === "stats" ? "page" : undefined}
+                  aria-label={railLabel}
+                  className={rowClass(screen === "stats")}
+                >
+                  <Icon icon={BarChart3} size="sm" />
+                  {!collapsed && (
+                    <span className="flex-1 truncate text-left">
+                      {t("screen.stats")}
+                    </span>
+                  )}
+                </button>
+              )}
+              menu={hideScreenItem("stats")}
+            />
+          )}
+          {/* The archive door: where lists go when they leave the sidebar. */}
+          {!hiddenScreens.archive && (
+            <RailTip
+              label={t("screen.archive")}
+              collapsed={collapsed}
+              button={(railLabel) => (
+                <button
+                  type="button"
+                  onClick={onSelectArchive}
+                  aria-current={screen === "archive" ? "page" : undefined}
+                  aria-label={railLabel}
+                  className={rowClass(screen === "archive")}
+                >
+                  <Icon icon={Archive} size="sm" />
+                  {!collapsed && (
+                    <span className="flex-1 truncate text-left">
+                      {t("screen.archive")}
+                    </span>
+                  )}
+                </button>
+              )}
+              menu={hideScreenItem("archive")}
+            />
+          )}
           <RailTip
             label={t("screen.settings")}
             collapsed={collapsed}
@@ -1005,6 +1075,36 @@ export function Sidebar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* The archive ask — one rule for both doors: leaving the sidebar is
+          staged, never taken from a menu click alone. Reversible, so the
+          action button stays in the accent colour, not the destructive one. */}
+      <AlertDialog
+        open={pendingArchive !== null}
+        onOpenChange={(open) => !open && setPendingArchive(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sidebar.archiveListTitle", { name: pendingArchive?.name ?? "" })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("sidebar.archiveListBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingArchive) onArchiveList(pendingArchive);
+                setPendingArchive(null);
+              }}
+            >
+              {t("sidebar.archiveList")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       </aside>
 
       {/*
