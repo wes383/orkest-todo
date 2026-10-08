@@ -105,7 +105,7 @@ import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
 import { useI18n } from "@/lib/i18n";
-import { formatDate } from "@/lib/date";
+import { formatDate, todayISO } from "@/lib/date";
 import type { MessageKey } from "@/lib/messages";
 import type { GoalConfig, PaletteName, Priority, Screen, Todo, TodoList, ViewId } from "@/lib/types";
 
@@ -614,7 +614,11 @@ export default function App() {
         notes: "",
         // `p#` from the quick-add syntax, else keep the app's usual default.
         priority: draft.priority ?? "medium",
-        dueDate: null,
+        // A bare `HH:mm` in the field means "due today at that moment" —
+        // a time is only meaningful anchored to a day, and today is the day
+        // the typist is standing in.
+        dueDate: draft.time ? todayISO() : null,
+        dueTime: draft.time,
         listId: targetListId,
         tags: draft.tags,
         subtasks: [],
@@ -642,6 +646,7 @@ export default function App() {
           notes: draft.notes.trim(),
           priority: draft.priority,
           dueDate: draft.dueDate,
+          dueTime: draft.dueTime,
           listId: draft.listId,
           tags: draft.tags,
           subtasks: draft.subtasks,
@@ -755,7 +760,10 @@ export default function App() {
     (id: string, due: string | null) =>
       // Clearing the date un-anchors any repeat, keeping the invariant
       // "recurring ⇒ has a due date" true everywhere, not just in the editor.
-      updateTodo(id, due ? { dueDate: due } : { dueDate: null, recur: null }),
+      updateTodo(
+        id,
+        due ? { dueDate: due } : { dueDate: null, dueTime: null, recur: null }
+      ),
     [updateTodo]
   );
 

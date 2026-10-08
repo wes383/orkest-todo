@@ -1,4 +1,4 @@
-import { daysFromToday, todayISO } from "@/lib/date";
+import { daysFromToday, isOverdue, todayISO } from "@/lib/date";
 import { LOCALES, translate, type Language } from "@/lib/messages";
 import {
   PRIORITY_META,
@@ -45,7 +45,9 @@ function matchesView(todo: Todo, view: ViewId): boolean {
       return diff > 0 && diff <= WEEK_AHEAD;
     }
     case "overdue":
-      return !todo.done && !!todo.dueDate && daysFromToday(todo.dueDate) < 0;
+      // Time-precise: a today-09:00 task still pending at noon is overdue
+      // already, while an all-day task only turns tomorrow.
+      return isOverdue(todo.dueDate, todo.done, todo.dueTime);
     case "starred":
       return !todo.done && todo.starred;
     case "completed":
@@ -82,6 +84,17 @@ function compareByDue(a: Todo, b: Todo): number {
   if (a.dueDate && b.dueDate) {
     const byDate = a.dueDate.localeCompare(b.dueDate);
     if (byDate !== 0) return byDate;
+    // Same day: a task with a moment sorts before an all-day task, and two
+    // moments sort chronologically — "17:00" compares as itself because the
+    // zero-padded `HH:mm` strings order like the times they name.
+    if (a.dueTime && b.dueTime) {
+      const byTime = a.dueTime.localeCompare(b.dueTime);
+      if (byTime !== 0) return byTime;
+    } else if (a.dueTime) {
+      return -1;
+    } else if (b.dueTime) {
+      return 1;
+    }
   } else if (a.dueDate) {
     return -1;
   } else if (b.dueDate) {
@@ -175,9 +188,8 @@ export function computeStats(todos: Todo[]): TodoStats {
     total: todos.length,
     active,
     done,
-    overdue: todos.filter(
-      (t) => !t.done && !!t.dueDate && daysFromToday(t.dueDate) < 0
-    ).length,
+    overdue: todos.filter((t) => isOverdue(t.dueDate, t.done, t.dueTime))
+      .length,
     today: todos.filter((t) => !t.done && t.dueDate === today).length,
     starred: todos.filter((t) => !t.done && t.starred).length,
     progress: todos.length === 0 ? 0 : Math.round((done / todos.length) * 100),

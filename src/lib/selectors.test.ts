@@ -19,6 +19,7 @@ function todo(patch: Partial<Todo> & Pick<Todo, "title">): Todo {
     starred: false,
     priority: "medium",
     dueDate: null,
+    dueTime: null,
     listId: "list-work",
     tags: [],
     subtasks: [],

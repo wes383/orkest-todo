@@ -48,7 +48,14 @@ import { Icon } from "@/components/ui/icon";
 import { Progress } from "@/components/ui/progress";
 import { Tag } from "@/components/ui/tag";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { addDays, dueLabel, dueTone, relativeCreated, todayISO } from "@/lib/date";
+import {
+  addDays,
+  dueLabel,
+  dueTone,
+  formatHM,
+  relativeCreated,
+  todayISO,
+} from "@/lib/date";
 import { recurLabel } from "@/lib/recur";
 import { LinkText } from "@/components/todo/link-text";
 import { GoalMarker } from "@/components/todo/goal-marker";
@@ -140,7 +147,7 @@ export function TodoItem({
   const { t, language } = useI18n();
 
   const priority = PRIORITY_META[todo.priority];
-  const tone = dueTone(todo.dueDate, todo.done);
+  const tone = dueTone(todo.dueDate, todo.done, todo.dueTime);
   const doneSubs = todo.subtasks.filter((s) => s.done).length;
   const subProgress =
     todo.subtasks.length === 0
@@ -369,6 +376,9 @@ export function TodoItem({
                     >
                       <CalendarClock className="h-3 w-3" aria-hidden="true" />
                       {dueLabel(due.date, language)}
+                      {/* The moment rides the label when there is one:
+                          `今天 17:00`, `Tomorrow 9:30 AM`. */}
+                      {todo.dueTime && ` ${formatHM(todo.dueTime, language)}`}
                     </span>
                   )}
 

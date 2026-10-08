@@ -241,7 +241,17 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
     const sizeClass = TIME_PICKER_TRIGGER_SIZE[resolvedSize];
 
     return (
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        /* `disabled` has to reach the popover itself: Radix's trigger keeps
+         * its click handler regardless of anything stamped on the child, so
+         * without this guard a "disabled" picker still opened, wheels and
+         * all — the muted paint alone was decoration, not a lock. */
+        onOpenChange={(next) => {
+          if (disabled && next) return;
+          setOpen(next);
+        }}
+      >
         <PopoverTrigger asChild>
           <div
             ref={triggerRef}
@@ -249,7 +259,7 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
               "relative flex items-center w-full bg-surface border text-foreground transition-colors duration-base",
               "border-border focus-within:border-border-strong",
               disabled && "bg-hover-bg cursor-not-allowed opacity-60",
-              "cursor-pointer",
+              !disabled && "cursor-pointer",
               sizeClass,
               className
             )}
@@ -323,6 +333,24 @@ export const TimePicker = React.forwardRef<HTMLInputElement, TimePickerProps>(
             )}
           </div>
           <div className="mt-3 flex justify-end gap-2">
+            {/*
+             * 清除 only appears when there is something to clear: an empty
+             * time is a meaningful value (all-day), not a missing one, so the
+             * button must not sit there suggesting the field is invalid.
+             */}
+            {value && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-foreground-muted"
+                onClick={() => {
+                  commit("");
+                  setOpen(false);
+                }}
+              >
+                {pick(locale, "清除", "Clear")}
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
               {pick(locale, "确定", "OK")}
             </Button>

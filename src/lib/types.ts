@@ -66,6 +66,10 @@ export interface Todo {
   priority: Priority;
   /** Local calendar date, `YYYY-MM-DD`. `null` = no due date. */
   dueDate: string | null;
+  /** Due time of day, `HH:mm` (24-hour). `null` = an all-day task: the due
+      date is a deadline the whole day, not a moment in it. Only meaningful
+      alongside `dueDate`; a time without a date is never stored. */
+  dueTime: string | null;
   listId: string;
   tags: string[];
   subtasks: Subtask[];

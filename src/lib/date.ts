@@ -74,14 +74,58 @@ export function dueLabel(iso: string, lang: Language): string {
   }
 }
 
+/**
+ * A `dueTime` as the language would say it — `17:00` in Chinese, `5:00 PM`
+ * in English. The zero-padded `HH:mm` is the storage format, not display.
+ */
+export function formatHM(hm: string, lang: Language): string {
+  const [h, m] = hm.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h ?? 0, m ?? 0, 0, 0);
+  return new Intl.DateTimeFormat(LOCALES[lang], {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: !lang.startsWith("zh"),
+  }).format(d);
+}
+
 export type DueTone = "overdue" | "today" | "soon" | "later";
 
+/** The current wall-clock time as `HH:mm`, the format `dueTime` speaks. */
+export function nowHM(): string {
+  const d = new Date();
+  return `${`${d.getHours()}`.padStart(2, "0")}:${`${d.getMinutes()}`.padStart(2, "0")}`;
+}
+
+/**
+ * Whether an unfinished task's deadline has passed — to the moment when the
+ * task carries a time, to the day when it does not. An all-day task due today
+ * is never overdue until tomorrow arrives; a 9:00 task still pending at
+ * 14:00 already is.
+ */
+export function isOverdue(
+  dueDate: string | null,
+  done: boolean,
+  dueTime?: string | null
+): boolean {
+  if (!dueDate || done) return false;
+  const diff = daysFromToday(dueDate);
+  if (diff < 0) return true;
+  if (diff > 0) return false;
+  // Due today: overdue only past its moment, and only when it has one.
+  return !!dueTime && dueTime < nowHM();
+}
+
 /** Tone drives the color of the due-date chip. A done task is never "overdue". */
-export function dueTone(dueDate: string | null, done: boolean): DueTone | null {
+export function dueTone(
+  dueDate: string | null,
+  done: boolean,
+  dueTime?: string | null
+): DueTone | null {
   if (!dueDate) return null;
   if (done) return "later";
+  if (isOverdue(dueDate, done, dueTime)) return "overdue";
   const diff = daysFromToday(dueDate);
-  if (diff < 0) return "overdue";
   if (diff === 0) return "today";
   if (diff <= 3) return "soon";
   return "later";

@@ -13,21 +13,62 @@ export const PRIORITY_ALIAS: Record<string, Priority> = {
   p4: "low",
 };
 
+/*
+ * The time alternative lists the am/pm forms *before* the bare `HH:mm`: regex
+ * alternation is first-match-wins, so the plain form would otherwise eat
+ * "10:00" out of "10:00 am" and strand the suffix as text. The lookahead then
+ * backtracks into the am/pm alternative, which consumes the whole run. The
+ * suffix is spelled as character classes rather than a `/i` flag — a global
+ * flag would silently make `P1` a priority token too, a behaviour change this
+ * syntax never signed up for.
+ */
 const TOKEN_PATTERN = new RegExp(
-  `(^|\\s)(#[^\\s#]+|${Object.keys(PRIORITY_ALIAS).join("|")})(?=\\s|$)`,
+  `(^|\\s)(#[^\\s#]+|${Object.keys(PRIORITY_ALIAS).join("|")}|\\d{1,2}(?::\\d{2})?\\s?[aApP][mM]|\\d{1,2}:\\d{2})(?=\\s|$)`,
   "g"
 );
 
 export type QuickToken =
   | { kind: "text"; text: string }
   | { kind: "tag"; text: string; tag: string }
-  | { kind: "priority"; text: string; priority: Priority };
+  | { kind: "priority"; text: string; priority: Priority }
+  | { kind: "time"; text: string; time: string };
 
 export interface QuickInput {
   title: string;
   tags: string[];
   /** `null` when no `p#` was typed — the caller decides the fallback. */
   priority: Priority | null;
+  /** `null` when no time was typed. Always the padded 24-hour `HH:mm` the
+      store speaks — 12-hour input (`10am`, `10:00 pm`) is normalised here. */
+  time: string | null;
+}
+
+/** A standalone clock time — `17:00`, `9:30`, `10am`, `10:00 pm`, `12 AM`. */
+const TIME_PATTERN = /^(\d{1,2})(?::(\d{2}))?\s*([aApP][mM])?$/;
+
+/**
+ * Any of the spoken time shapes → the padded `HH:mm` the store speaks;
+ * anything that was never a real time → `null` (the caller demotes it to
+ * plain text rather than clamping it into range).
+ *
+ * With an am/pm suffix the clock is 12-hour: `1`–`12` only, `13pm` refused.
+ * Without one, minutes are required — a bare `10` is a number, not a moment —
+ * and the hour may run 0–23.
+ */
+export function parseTimeToken(raw: string): string | null {
+  const m = TIME_PATTERN.exec(raw);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = m[2] === undefined ? 0 : Number(m[2]);
+  if (min > 59) return null;
+  const suffix = m[3]?.toLowerCase();
+  if (suffix) {
+    if (h < 1 || h > 12) return null;
+    const hour = (h % 12) + (suffix === "pm" ? 12 : 0);
+    return `${`${hour}`.padStart(2, "0")}:${`${min}`.padStart(2, "0")}`;
+  }
+  if (m[2] === undefined || h > 23) return null;
+  return `${`${h}`.padStart(2, "0")}:${`${min}`.padStart(2, "0")}`;
 }
 
 /**
@@ -53,6 +94,7 @@ export function tokenizeQuickInput(raw: string): QuickToken[] {
   const tokens: QuickToken[] = [];
   let cursor = 0;
   let prioritySeen = false;
+  let timeSeen = false;
 
   /**
    * Plain runs are merged rather than emitted one per slice, so a demoted `p#`
@@ -88,6 +130,19 @@ export function tokenizeQuickInput(raw: string): QuickToken[] {
       } else {
         tokens.push({ kind: "tag", text: body, tag: body.slice(1) });
       }
+    } else if (/^\d/.test(body)) {
+      // A clock time: only a valid one becomes a token, and only the first —
+      // the same single-value rule priority follows. `25:00` was never a time,
+      // so it stays plain text rather than being silently clamped. The check
+      // runs before the prioritySeen demotion: a time and a `p#` are
+      // independent values, and typing both is legitimate.
+      const time = parseTimeToken(body);
+      if (time === null || timeSeen) {
+        pushText(body);
+      } else {
+        timeSeen = true;
+        tokens.push({ kind: "time", text: body, time });
+      }
     } else if (prioritySeen) {
       pushText(body);
     } else {
@@ -113,6 +168,7 @@ export function parseQuickInput(raw: string): QuickInput {
   const tags: string[] = [];
   const plain: string[] = [];
   let priority: Priority | null = null;
+  let time: string | null = null;
 
   for (const token of tokenizeQuickInput(raw)) {
     switch (token.kind) {
@@ -125,6 +181,9 @@ export function parseQuickInput(raw: string): QuickInput {
       case "priority":
         if (priority === null) priority = token.priority;
         break;
+      case "time":
+        if (time === null) time = token.time;
+        break;
     }
   }
 
@@ -132,5 +191,6 @@ export function parseQuickInput(raw: string): QuickInput {
     title: plain.join(" ").replace(/\s+/g, " ").trim(),
     tags,
     priority,
+    time,
   };
 }

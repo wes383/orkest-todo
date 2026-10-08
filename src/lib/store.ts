@@ -11,6 +11,8 @@ export interface TodoDraft {
   notes: string;
   priority: Priority;
   dueDate: string | null;
+  /** `HH:mm` or `null` = all-day. Never set without a `dueDate`. */
+  dueTime: string | null;
   listId: string;
   tags: string[];
   subtasks: Subtask[];
@@ -252,6 +254,7 @@ function seedTodos(lang: Language): Todo[] {
     starred: partial.starred ?? false,
     priority: partial.priority ?? "medium",
     dueDate: partial.dueDate ?? null,
+    dueTime: null,
     listId: partial.listId,
     tags: partial.tags ?? [],
     subtasks: partial.subtasks ?? [],
@@ -285,7 +288,13 @@ function load(lang: Language): PersistedState {
       // can be missing a field the current type calls for — `recur` above all,
       // where the type says `Recur | null` but old storage holds `undefined`.
       // Coercing once at the door keeps every reader free of the question.
-      todos: parsed.todos.map((todo) => ({ ...todo, recur: todo.recur ?? null })),
+      todos: parsed.todos.map((todo) => ({
+        ...todo,
+        recur: todo.recur ?? null,
+        // `dueTime` postdates the first release — old storage omits it, and
+        // every old task was by definition an all-day task.
+        dueTime: todo.dueTime ?? null,
+      })),
       lists: (parsed.lists.length > 0 ? parsed.lists : SEED[lang].lists).map(
         (list) => ({
           ...list,
@@ -348,6 +357,7 @@ export function useTodoStore(lang: Language) {
         starred: false,
         priority: draft.priority,
         dueDate: draft.dueDate,
+        dueTime: draft.dueTime,
         listId: draft.listId,
         tags: draft.tags,
         subtasks: draft.subtasks,

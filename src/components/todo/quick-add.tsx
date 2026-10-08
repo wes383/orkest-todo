@@ -55,7 +55,10 @@ const PRIORITY_PAINT: Record<PriorityMeta["badge"], string> = {
   secondary: "bg-muted text-foreground-muted",
 };
 
-/** One run of the mirror layer: plain text, a `#tag`, or a `p#` priority. */
+/** A clock time shares the due-date chip's blue — same family of meaning. */
+const TIME_PAINT = "bg-blue-soft text-blue-fg";
+
+/** One run of the mirror layer: plain text, a `#tag`, a `p#` priority, or a `HH:mm` time. */
 function Token({ token }: { token: QuickToken }) {
   switch (token.kind) {
     case "text":
@@ -73,6 +76,8 @@ function Token({ token }: { token: QuickToken }) {
           {token.text}
         </span>
       );
+    case "time":
+      return <span className={cn(TOKEN_FRAME, TIME_PAINT)}>{token.text}</span>;
   }
 }
 
@@ -123,7 +128,7 @@ export function QuickAdd({
   hideShortcutHints,
   ref,
 }: QuickAddProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -287,6 +292,15 @@ export function QuickAdd({
             <span className="text-foreground-faint">–</span>
             <Kbd className="text-[10px]">p4</Kbd>
             {t("quickAdd.priorityHint")}
+          </span>
+          <span aria-hidden="true" className="text-foreground-faint">
+            ·
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            {/* Each language shows the shape its speakers type: `17:00` is
+                what a zh field reads, `5pm` is what an en one does. */}
+            <Kbd className="text-[10px]">{language === "en" ? "5pm" : "17:00"}</Kbd>
+            {t("quickAdd.timeHint")}
           </span>
           {/* Clause and separator leave together: a trailing `·` with nothing
               after it reads as a typo. */}

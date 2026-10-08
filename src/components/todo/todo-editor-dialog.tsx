@@ -7,6 +7,7 @@ import {
   DatePicker,
   type DatePickerShortcut,
 } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import {
   Dialog,
   DialogContent,
@@ -94,6 +95,8 @@ interface FormState {
   notes: string;
   priority: Priority;
   dueDate: string;
+  /** `""` = all-day; the picker speaks `HH:mm`, the store speaks `null`. */
+  dueTime: string;
   listId: string;
   tags: string[];
   subtasks: Subtask[];
@@ -106,6 +109,7 @@ function emptyForm(listId: string, dueDate = ""): FormState {
     notes: "",
     priority: "medium",
     dueDate,
+    dueTime: "",
     listId,
     tags: [],
     subtasks: [],
@@ -119,6 +123,7 @@ function formFromTodo(todo: Todo, fallbackListId: string): FormState {
     notes: todo.notes,
     priority: todo.priority,
     dueDate: todo.dueDate ?? "",
+    dueTime: todo.dueTime ?? "",
     listId: todo.listId || fallbackListId,
     tags: [...todo.tags],
     subtasks: todo.subtasks.map((s) => ({ ...s })),
@@ -194,6 +199,10 @@ export function TodoEditorDialog({
       notes: form.notes,
       priority: form.priority,
       dueDate: form.dueDate || null,
+      // The invariant "a time only ever rides a date" is enforced here, at
+      // the one place that writes both: clearing the date silences the time,
+      // whatever the picker still holds.
+      dueTime: form.dueDate && form.dueTime ? form.dueTime : null,
       listId: form.listId,
       tags: form.tags,
       subtasks: form.subtasks,
@@ -332,26 +341,43 @@ export function TodoEditorDialog({
              * which is a trap the app's local-calendar date helpers exist to
              * avoid. `dueDate` stays a plain ISO date string in state, so the
              * conversion happens only here at the edge.
+             *
+             * The time picker sits beside it as a second, optional control:
+             * an empty time means all-day, which is what every task has meant
+             * so far. It stays disabled until a date exists — a moment without
+             * a day names nothing — and clears with the date.
              */}
             <div>
               <Label>{t("common.dueDate")}</Label>
-              <DatePicker
-                aria-label={t("common.dueDate")}
-                placeholder={t("editor.duePlaceholder")}
-                intlLocale={locale}
-                /* `null`, not `undefined`, when empty: the DatePicker treats an
-                 * `undefined` value prop as "uncontrolled", and the resulting
-                 * mode flip is what once made the first Clear click a no-op. */
-                value={form.dueDate ? fromISODate(form.dueDate) : null}
-                onChange={(v) =>
-                  patch({
-                    dueDate: v instanceof Date ? toISODate(v) : "",
-                    // A repeat is anchored to its due date; no date, no anchor.
-                    ...(v instanceof Date ? {} : { recur: null }),
-                  })
-                }
-                shortcuts={shortcuts}
-              />
+              <div className="flex items-start gap-2">
+                <DatePicker
+                  aria-label={t("common.dueDate")}
+                  placeholder={t("editor.duePlaceholder")}
+                  intlLocale={locale}
+                  className="min-w-0 flex-1"
+                  /* `null`, not `undefined`, when empty: the DatePicker treats an
+                   * `undefined` value prop as "uncontrolled", and the resulting
+                   * mode flip is what once made the first Clear click a no-op. */
+                  value={form.dueDate ? fromISODate(form.dueDate) : null}
+                  onChange={(v) =>
+                    patch({
+                      dueDate: v instanceof Date ? toISODate(v) : "",
+                      // A repeat is anchored to its due date; no date, no anchor.
+                      ...(v instanceof Date ? {} : { recur: null, dueTime: "" }),
+                    })
+                  }
+                  shortcuts={shortcuts}
+                />
+                <TimePicker
+                  aria-label={t("editor.dueTime")}
+                  intlLocale={locale}
+                  className="w-36 shrink-0"
+                  placeholder={t("editor.dueTimePlaceholder")}
+                  disabled={!form.dueDate}
+                  value={form.dueTime}
+                  onChange={(v) => patch({ dueTime: v })}
+                />
+              </div>
             </div>
 
             {/*

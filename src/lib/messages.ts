@@ -356,6 +356,7 @@ const zh = {
   "quickAdd.intoList": "加入「{list}」",
   "quickAdd.tagSyntax": "#标签",
   "quickAdd.priorityHint": "优先级",
+  "quickAdd.timeHint": "截止时间",
   "quickAdd.fullEditorHint": "完整编辑",
 
   /* ── Task editor ─────────────────────────────────────────── */
@@ -375,6 +376,8 @@ const zh = {
   "editor.listLabel": "所属清单",
   "editor.listPlaceholder": "选择清单",
   "editor.duePlaceholder": "选择截止日期",
+  "editor.dueTime": "截止时间",
+  "editor.dueTimePlaceholder": "添加时间",
   "recur.label": "重复",
   "recur.none": "不重复",
   "recur.dailyItem": "每 x 天",
@@ -982,6 +985,7 @@ const en: Record<MessageKey, Message> = {
   "quickAdd.intoList": "Into “{list}”",
   "quickAdd.tagSyntax": "#tag",
   "quickAdd.priorityHint": "priority",
+  "quickAdd.timeHint": "due time",
   "quickAdd.fullEditorHint": "Full editor",
 
   /* ── Task editor ─────────────────────────────────────────── */
@@ -1001,6 +1005,8 @@ const en: Record<MessageKey, Message> = {
   "editor.listLabel": "List",
   "editor.listPlaceholder": "Choose a list",
   "editor.duePlaceholder": "Choose a due date",
+  "editor.dueTime": "Due time",
+  "editor.dueTimePlaceholder": "Add time",
   "recur.label": "Repeat",
   "recur.none": "No repeat",
   "recur.dailyItem": "Every N days",
