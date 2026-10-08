@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { uid } from "@/lib/utils";
 import { translate, type Language } from "@/lib/messages";
-import type { Priority, Recur, Subtask, Todo, TodoList } from "@/lib/types";
+import type { GoalConfig, Priority, Recur, Subtask, Todo, TodoList } from "@/lib/types";
 import { nextDueDate } from "@/lib/recur";
 
 const STORAGE_KEY = "orkest-todo.v1";
@@ -96,9 +96,9 @@ interface Seed {
 const SEED: Record<Language, Seed> = {
   zh: {
     lists: [
-      { id: WORK_LIST, name: "工作", color: "indigo" },
-      { id: LIFE_LIST, name: "生活", color: "emerald" },
-      { id: SHOPPING_LIST, name: "购物", color: "amber" },
+      { id: WORK_LIST, name: "工作", color: "indigo", goal: null },
+      { id: LIFE_LIST, name: "生活", color: "emerald", goal: null },
+      { id: SHOPPING_LIST, name: "购物", color: "amber", goal: null },
     ],
     todos: [
       {
@@ -164,9 +164,9 @@ const SEED: Record<Language, Seed> = {
   },
   en: {
     lists: [
-      { id: WORK_LIST, name: "Work", color: "indigo" },
-      { id: LIFE_LIST, name: "Personal", color: "emerald" },
-      { id: SHOPPING_LIST, name: "Shopping", color: "amber" },
+      { id: WORK_LIST, name: "Work", color: "indigo", goal: null },
+      { id: LIFE_LIST, name: "Personal", color: "emerald", goal: null },
+      { id: SHOPPING_LIST, name: "Shopping", color: "amber", goal: null },
     ],
     todos: [
       {
@@ -286,7 +286,9 @@ function load(lang: Language): PersistedState {
       // where the type says `Recur | null` but old storage holds `undefined`.
       // Coercing once at the door keeps every reader free of the question.
       todos: parsed.todos.map((todo) => ({ ...todo, recur: todo.recur ?? null })),
-      lists: parsed.lists.length > 0 ? parsed.lists : SEED[lang].lists,
+      lists: (parsed.lists.length > 0 ? parsed.lists : SEED[lang].lists).map(
+        (list) => ({ ...list, goal: list.goal ?? null })
+      ),
     };
   } catch {
     return initialState(lang);
@@ -505,17 +507,38 @@ export function useTodoStore(lang: Language) {
 
   /* ── Lists ───────────────────────────────────────────────── */
 
-  const addList = useCallback((name: string, color: TodoList["color"]): TodoList => {
-    const list: TodoList = { id: uid("list"), name: name.trim(), color };
-    setState((s) => ({ ...s, lists: [...s.lists, list] }));
-    return list;
-  }, []);
+  const addList = useCallback(
+    (name: string, color: TodoList["color"], goal: GoalConfig | null = null): TodoList => {
+      const list: TodoList = { id: uid("list"), name: name.trim(), color, goal };
+      setState((s) => ({ ...s, lists: [...s.lists, list] }));
+      return list;
+    },
+    []
+  );
 
   const updateList = useCallback((id: string, patch: Partial<TodoList>) => {
     setState((s) => ({
       ...s,
       lists: s.lists.map((l) => (l.id === id ? { ...l, ...patch } : l)),
     }));
+  }, []);
+
+  /**
+   * Moves one list to an index, the sidebar's drag handle speaking straight to
+   * it. The array order *is* the display order — creation order until a drag
+   * rearranges it — and persists through the same state write as everything
+   * else. An out-of-range index clamps rather than throws: a drag that lands
+   * off the end of the column is still a move to the end.
+   */
+  const moveList = useCallback((id: string, toIndex: number) => {
+    setState((s) => {
+      const fromIndex = s.lists.findIndex((l) => l.id === id);
+      if (fromIndex < 0) return s;
+      const next = [...s.lists];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(Math.max(0, Math.min(next.length, toIndex)), 0, moved);
+      return { ...s, lists: next };
+    });
   }, []);
 
   /**
@@ -572,6 +595,7 @@ export function useTodoStore(lang: Language) {
     clearCompleted,
     addList,
     updateList,
+    moveList,
     removeList,
     clearAll,
   };

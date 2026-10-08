@@ -21,6 +21,36 @@ export interface Subtask {
   done: boolean;
 }
 
+/**
+ * What makes a list a goal. A goal is a list with intent: it knows what
+ * success means and how far along it is.
+ *
+ * `metric` picks the way progress is measured, and it decides who owns the
+ * numbers:
+ *
+ * - `"tasks"` — progress is derived from the tasks filed into the list
+ *   (done / total); `current` plays no part and is never read.
+ * - `"number"` — progress is manual: `current` against `target`, both edited
+ *   by the user ("read 12 books", currently 5). Nothing is derived.
+ *
+ * Either way the percent shown in the sidebar is clamped to 0–100.
+ */
+export interface GoalConfig {
+  notes: string;
+  metric: "tasks" | "number";
+  target: number;
+  current: number;
+}
+
+export interface TodoList {
+  id: string;
+  name: string;
+  /** Key into the Orkest 19-color project palette. */
+  color: PaletteName;
+  /** `null` = a plain list; non-null turns the row into a goal. */
+  goal: GoalConfig | null;
+}
+
 export interface Todo {
   id: string;
   title: string;

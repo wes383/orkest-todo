@@ -46,6 +46,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { addDays, dueLabel, dueTone, relativeCreated, todayISO } from "@/lib/date";
 import { recurLabel } from "@/lib/recur";
 import { LinkText } from "@/components/todo/link-text";
+import { GoalMarker } from "@/components/todo/goal-marker";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -255,11 +256,15 @@ export function TodoItem({
   if (showList && list) {
     metaGroups.push(
       <span key="list" className="inline-flex items-center gap-1.5">
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{ backgroundColor: paletteVar(list.color) }}
-          aria-hidden="true"
-        />
+        {list.goal ? (
+          <GoalMarker color={paletteVar(list.color)} size={10} />
+        ) : (
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: paletteVar(list.color) }}
+            aria-hidden="true"
+          />
+        )}
         {list.name}
       </span>
     );

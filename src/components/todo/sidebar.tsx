@@ -47,6 +47,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SubsectionLabel } from "@/components/ui/section";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
+import { GoalMarker } from "@/components/todo/goal-marker";
 import {
   HIDEABLE_VIEWS,
   MAX_SIDEBAR_WIDTH,
@@ -207,6 +208,8 @@ export interface SidebarProps {
   lists: TodoList[];
   counts: Record<ViewId, number>;
   listCounts: Record<string, number>;
+  /** Per-goal completion percent (0–100), derived in App from the todos. */
+  goalProgress: Record<string, number>;
   activeView: ViewId;
   activeListId: string | null;
   /** Which screen fills the main area — the sidebar never leaves, so it needs
@@ -226,6 +229,12 @@ export interface SidebarProps {
   onCreateList: () => void;
   onEditList: (list: TodoList) => void;
   onDeleteList: (list: TodoList) => void;
+  /** Drop one list above/below another — the drag handle's whole story. */
+  onReorderLists: (
+    dragId: string,
+    targetId: string,
+    position: "above" | "below"
+  ) => void;
   /** Commits a dragged width to the settings — written once, on release. */
   onResizeSidebar: (width: number) => void;
 }
@@ -234,6 +243,7 @@ export function Sidebar({
   lists,
   counts,
   listCounts,
+  goalProgress,
   activeView,
   activeListId,
   screen,
@@ -248,10 +258,57 @@ export function Sidebar({
   onCreateList,
   onEditList,
   onDeleteList,
+  onReorderLists,
   onResizeSidebar,
 }: SidebarProps) {
   const { t } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<TodoList | null>(null);
+
+  /*
+   * Drag-to-reorder, held in two pieces: which row is being dragged, and
+   * where it would land (a neighbour plus the side of it). The indicator and
+   * the drop both read these; everything resets on drag end, however the
+   * gesture finishes. The collapsed rail does not reorder — a column of
+   * 36px squares with no labels is no place for it.
+   */
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{
+    id: string;
+    position: "above" | "below";
+  } | null>(null);
+
+  const onDragStartList = (id: string) => (e: React.DragEvent) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = "move";
+    // Required for Firefox to start the drag at all.
+    e.dataTransfer.setData("text/plain", id);
+  };
+
+  const onDragOverList = (id: string) => (e: React.DragEvent) => {
+    if (dragId === null || dragId === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position =
+      e.clientY < rect.top + rect.height / 2 ? "above" : "below";
+    setDropAt((prev) =>
+      prev?.id === id && prev.position === position ? prev : { id, position }
+    );
+  };
+
+  const onDropList = (id: string) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragId !== null && dragId !== id && dropAt?.id === id) {
+      onReorderLists(dragId, id, dropAt.position);
+    }
+    setDragId(null);
+    setDropAt(null);
+  };
+
+  const endDrag = () => {
+    setDragId(null);
+    setDropAt(null);
+  };
   /*
    * The rail is a mode, not a preference. It lives here rather than in settings
    * because the state is its own explanation — the toggle that sets it is on
@@ -551,24 +608,52 @@ export function Sidebar({
                     className={cn(
                       rowClass(active),
                       rowTextClass(active),
-                      !collapsed && "pr-9"
+                      !collapsed && "pr-9",
+                      dragId === list.id && "opacity-40"
                     )}
+                    draggable={!collapsed}
+                    onDragStart={onDragStartList(list.id)}
+                    onDragOver={onDragOverList(list.id)}
+                    onDrop={onDropList(list.id)}
+                    onDragEnd={endDrag}
                   >
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: paletteVar(list.color) }}
-                    />
+                    {list.goal ? (
+                      <GoalMarker color={paletteVar(list.color)} />
+                    ) : (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: paletteVar(list.color) }}
+                      />
+                    )}
                     {!collapsed && (
                       <>
                         <span className="flex-1 truncate text-left">
                           {list.name}
                         </span>
-                        {count > 0 && (
+                        {/* A goal's row speaks in progress, a list's in a
+                            count of tasks left — the two right-edge numbers
+                            are answers to different questions. */}
+                        {list.goal ? (
                           <span className="font-mono text-xs tabular-nums text-foreground-subtle">
-                            {count}
+                            {goalProgress[list.id] ?? 0}%
                           </span>
+                        ) : (
+                          count > 0 && (
+                            <span className="font-mono text-xs tabular-nums text-foreground-subtle">
+                              {count}
+                            </span>
+                          )
                         )}
                       </>
+                    )}
+                    {!collapsed && dropAt?.id === list.id && dragId !== list.id && (
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute right-1 left-1 z-10 h-0.5 rounded-full bg-accent",
+                          dropAt.position === "above" ? "top-0" : "bottom-0"
+                        )}
+                      />
                     )}
                   </button>
                 );
@@ -586,7 +671,7 @@ export function Sidebar({
                             aria-label={t("sidebar.listActions", {
                               name: list.name,
                             })}
-                            className="absolute right-1 h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                            className="absolute right-0.5 h-7 w-7 rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
                           >
                             <Icon icon={MoreHorizontal} size="sm" />
                           </Button>

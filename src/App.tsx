@@ -64,6 +64,7 @@ const TodoEditorDialog = lazy(() =>
   }))
 );
 import { Sidebar } from "@/components/todo/sidebar";
+import { GoalBanner } from "@/components/todo/goal-banner";
 import { Toolbar } from "@/components/todo/toolbar";
 import { BlankAreaMenu } from "@/components/todo/blank-area-menu";
 import { QuickAdd, type QuickAddHandle } from "@/components/todo/quick-add";
@@ -96,7 +97,7 @@ import { useTrayBridge, type TrayCommand } from "@/lib/tray";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/date";
 import type { MessageKey } from "@/lib/messages";
-import type { PaletteName, Screen, Todo, TodoList, ViewId } from "@/lib/types";
+import type { GoalConfig, PaletteName, Screen, Todo, TodoList, ViewId } from "@/lib/types";
 
 /**
  * Titles only. Views used to carry a one-line hint too, but for the default
@@ -136,6 +137,7 @@ export default function App() {
     clearCompleted,
     addList,
     updateList,
+    moveList,
     removeList,
   } = store;
 
@@ -334,6 +336,45 @@ export default function App() {
     lists.forEach((l) => map.set(l.id, l));
     return map;
   }, [lists]);
+
+  /*
+   * The goal banner's subject — the list the sidebar has selected, when that
+   * list is a goal and the tasks screen is showing. Any other view or screen
+   * leaves it null, and the banner does not render.
+   */
+  const activeGoalList =
+    screen === "todos" && filters.listId != null
+      ? listById.get(filters.listId) ?? null
+      : null;
+  const activeGoal = activeGoalList?.goal ?? null;
+
+  /** Done / total for the selected goal, for the banner's tasks-metric line. */
+  const activeGoalStats = useMemo(() => {
+    if (!activeGoalList) return { done: 0, total: 0 };
+    const inList = todos.filter((todo) => todo.listId === activeGoalList.id);
+    return {
+      done: inList.filter((todo) => todo.done).length,
+      total: inList.length,
+    };
+  }, [activeGoalList, todos]);
+
+  /** The banner's quick-edit: writes the current value straight into the goal. */
+  const handleGoalCurrent = useCallback(
+    (value: number) => {
+      if (!activeGoalList || !activeGoalList.goal) return;
+      updateList(activeGoalList.id, {
+        goal: { ...activeGoalList.goal, current: value },
+      });
+    },
+    [activeGoalList, updateList]
+  );
+
+  /** The banner's pencil: the full edit, same dialog a list's ⋯ opens. */
+  const handleGoalEdit = useCallback(() => {
+    if (!activeGoalList) return;
+    setEditingList(activeGoalList);
+    setListDialogOpen(true);
+  }, [activeGoalList]);
 
   /**
    * Whether a task's list name is worth printing on its row.
@@ -624,17 +665,65 @@ export default function App() {
   }, [clearCompleted, restoreTodos, t]);
 
   const handleListSubmit = useCallback(
-    (name: string, color: PaletteName) => {
+    (name: string, color: PaletteName, goal: GoalConfig | null) => {
       if (editingList) {
-        updateList(editingList.id, { name, color });
+        updateList(editingList.id, { name, color, goal });
         toast(t("toast.listUpdated"), { description: name });
       } else {
-        const list = addList(name, color);
+        const list = addList(name, color, goal);
         toast.success(t("toast.listCreated"), { description: list.name });
       }
       setEditingList(null);
     },
     [addList, editingList, updateList, t]
+  );
+
+  /**
+   * Per-goal completion percent, 0–100. Derived, never stored — the same rule
+   * the smart views follow. A "tasks" goal reads its tasks (done over total);
+   * a "number" goal reads its own current over target. Either way the ratio
+   * is clamped, so a target edited downwards never pushes progress past full.
+   */
+  const goalProgress = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const list of lists) {
+      if (!list.goal) continue;
+      if (list.goal.metric === "number") {
+        const pct = Math.round(
+          (list.goal.current / Math.max(1, list.goal.target)) * 100
+        );
+        map[list.id] = Math.min(100, Math.max(0, pct));
+      } else {
+        const inList = todos.filter((todo) => todo.listId === list.id);
+        const pct =
+          inList.length === 0
+            ? 0
+            : Math.round(
+                (inList.filter((todo) => todo.done).length / inList.length) *
+                  100
+              );
+        map[list.id] = Math.min(100, Math.max(0, pct));
+      }
+    }
+    return map;
+  }, [lists, todos]);
+
+  /**
+   * The sidebar's drag handle: drop `dragId` above or below `targetId`. The
+   * insertion index is resolved here, against the order this render saw —
+   * removing the dragged row first shifts everything after it, so a drop that
+   * lands behind the origin moves up by one to compensate.
+   */
+  const handleReorderLists = useCallback(
+    (dragId: string, targetId: string, position: "above" | "below") => {
+      const fromIndex = lists.findIndex((l) => l.id === dragId);
+      const targetIndex = lists.findIndex((l) => l.id === targetId);
+      if (fromIndex < 0 || targetIndex < 0 || dragId === targetId) return;
+      let toIndex = position === "above" ? targetIndex : targetIndex + 1;
+      if (fromIndex < toIndex) toIndex -= 1;
+      moveList(dragId, toIndex);
+    },
+    [lists, moveList]
   );
 
   const handleListDelete = useCallback(
@@ -824,6 +913,7 @@ export default function App() {
           lists={lists}
           counts={counts}
           listCounts={listCounts}
+          goalProgress={goalProgress}
           activeView={filters.view}
           activeListId={filters.listId}
           screen={screen}
@@ -844,6 +934,7 @@ export default function App() {
             setListDialogOpen(true);
           }}
           onDeleteList={handleListDelete}
+          onReorderLists={handleReorderLists}
           onResizeSidebar={setSidebarWidth}
         />
 
@@ -975,6 +1066,22 @@ export default function App() {
                 onOpenFullEditor={openCreate}
                 hideShortcutHints={settings.hideShortcutHints}
               />
+
+              {/* A selected goal earns a banner: what it is, where it stands,
+                  and the one number worth editing in place. It sits just under
+                  the quick-add field, and only on the tasks screen with a goal
+                  list picked — every other view prints no banner. */}
+              {activeGoalList && activeGoal && (
+                <GoalBanner
+                  list={activeGoalList}
+                  progress={goalProgress[activeGoalList.id] ?? 0}
+                  doneCount={activeGoalStats.done}
+                  totalCount={activeGoalStats.total}
+                  tasks={todos.filter((todo) => todo.listId === activeGoalList.id)}
+                  onUpdateCurrent={handleGoalCurrent}
+                  onEdit={handleGoalEdit}
+                />
+              )}
 
               {visible.length === 0 ? (
                 emptyState

@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { addDays, fromISODate, todayISO, toISODate } from "@/lib/date";
 import { useI18n, type I18nValue } from "@/lib/i18n";
 import { weekdayName } from "@/lib/recur";
+import { GoalMarker } from "@/components/todo/goal-marker";
 import { cn, MOD_KEY, uid } from "@/lib/utils";
 import type { TodoDraft } from "@/lib/store";
 import {
@@ -303,10 +304,17 @@ export function TodoEditorDialog({
                     {lists.map((list) => (
                       <SelectItem key={list.id} value={list.id}>
                         <span className="inline-flex items-center gap-2">
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: paletteVar(list.color) }}
-                          />
+                          {list.goal ? (
+                            <GoalMarker
+                              color={paletteVar(list.color)}
+                              size={10}
+                            />
+                          ) : (
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: paletteVar(list.color) }}
+                            />
+                          )}
                           {list.name}
                         </span>
                       </SelectItem>
