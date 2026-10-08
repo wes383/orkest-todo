@@ -55,6 +55,12 @@ tauri-plugin-autostart = "2"
 # turned on and off from the settings page — see `src/lib/global-shortcut.ts`
 # for the frontend half.
 tauri-plugin-global-shortcut = "2"
+# 到点提醒的 OS 通知通道. Only ever called from the Rust side, via the
+# `send_notification` command: the webview asks, this crate shows. Keeping the
+# JS package out means no `notification:default` entry in capabilities — an ACL
+# permission governs what the webview may call *directly*, and it never calls
+# the plugin's commands at all.
+tauri-plugin-notification = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

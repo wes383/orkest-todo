@@ -38,6 +38,19 @@ export function addDays(iso: string, days: number): string {
   return toISODate(d);
 }
 
+/** The coming `weekday` (0 = Sunday … 6 = Saturday) on or after `iso`. With
+    `allowToday` a day that already is the target answers itself — "本周末"
+    asked on a Saturday means today; "下周一" asked on a Monday means next
+    week's, the prefix 下 promising a different week, not this one. */
+export function nextWeekdayISO(
+  iso: string,
+  weekday: number,
+  allowToday = false
+): string {
+  const delta = (weekday - fromISODate(iso).getDay() + 7) % 7;
+  return addDays(iso, delta === 0 && !allowToday ? 7 : delta);
+}
+
 /** Whole days between `iso` and today. Negative = in the past. */
 export function daysFromToday(iso: string): number {
   const a = fromISODate(todayISO()).getTime();

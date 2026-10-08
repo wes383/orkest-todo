@@ -13,6 +13,8 @@ export interface TodoDraft {
   dueDate: string | null;
   /** `HH:mm` or `null` = all-day. Never set without a `dueDate`. */
   dueTime: string | null;
+  /** Minutes before `dueTime` to remind, `0` = on time; `null` = none. */
+  remindBefore: number | null;
   listId: string;
   tags: string[];
   subtasks: Subtask[];
@@ -255,6 +257,7 @@ function seedTodos(lang: Language): Todo[] {
     priority: partial.priority ?? "medium",
     dueDate: partial.dueDate ?? null,
     dueTime: null,
+    remindBefore: null,
     listId: partial.listId,
     tags: partial.tags ?? [],
     subtasks: partial.subtasks ?? [],
@@ -294,6 +297,10 @@ function load(lang: Language): PersistedState {
         // `dueTime` postdates the first release — old storage omits it, and
         // every old task was by definition an all-day task.
         dueTime: todo.dueTime ?? null,
+        // `remindBefore` is the reminder the last release could not have: a
+        // task that never said "remind me" stays silent, which is also the
+        // honest default for a field that arrives after the fact.
+        remindBefore: todo.remindBefore ?? null,
       })),
       lists: (parsed.lists.length > 0 ? parsed.lists : SEED[lang].lists).map(
         (list) => ({
@@ -358,6 +365,7 @@ export function useTodoStore(lang: Language) {
         priority: draft.priority,
         dueDate: draft.dueDate,
         dueTime: draft.dueTime,
+        remindBefore: draft.remindBefore,
         listId: draft.listId,
         tags: draft.tags,
         subtasks: draft.subtasks,

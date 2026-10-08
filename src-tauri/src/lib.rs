@@ -1125,6 +1125,37 @@ async fn save_csv_files(
   .map_err(|e| e.to_string())?
 }
 
+/**
+ * One system notification, as the reminder ticker asks for it.
+ *
+ * The plugin's Rust API is called here rather than from the webview, which is
+ * what keeps `@tauri-apps/plugin-notification` out of `package.json` and a
+ * `notification:default` permission out of capabilities: the ACL only governs
+ * what the webview may call *directly*, and it calls this command instead —
+ * the same shape `set_close_to_tray` uses. Main window only, like the other
+ * preferences-carrying commands: the floating pill has nothing to remind
+ * anyone of, and its own ticker does not exist.
+ */
+#[tauri::command]
+fn send_notification(
+  window: tauri::WebviewWindow,
+  app: AppHandle,
+  title: String,
+  body: String,
+) -> Result<(), String> {
+  if window.label() != MAIN_WINDOW {
+    return Err("Only the main window may send notifications".into());
+  }
+  use tauri_plugin_notification::NotificationExt;
+  app
+    .notification()
+    .builder()
+    .title(title)
+    .body(body)
+    .show()
+    .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let builder = tauri::Builder::default();
@@ -1177,11 +1208,12 @@ pub fn run() {
 
   builder
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .invoke_handler(tauri::generate_handler![
       greet, sync_tray, save_csv_files, get_focus_widget_enabled,
       set_focus_widget_enabled, focus_widget_layout, open_main_window, quit_app,
-      set_close_to_tray, set_global_shortcuts,
+      set_close_to_tray, set_global_shortcuts, send_notification,
     ])
     .setup(|app| {
       let config_path = app.path().app_config_dir()?.join("focus-widget.json");
@@ -1436,5 +1468,15 @@ mod tests {
   #[test]
   fn window_close_defaults_to_leaving_the_app() {
     assert!(!WindowClose::default().to_tray.load(Ordering::SeqCst));
+  }
+
+  /// The reminder ticker's one door, pinned the way the quit event is: a
+  /// rename on either side would not break a build — the invoke would simply
+  /// fail on every tick and reminders would read as a switch that does
+  /// nothing.
+  #[test]
+  fn notification_command_name_matches_the_frontend_caller() {
+    let frontend = include_str!("../../src/lib/reminders.ts");
+    assert!(frontend.contains("\"send_notification\""));
   }
 }

@@ -70,6 +70,12 @@ export interface Todo {
       date is a deadline the whole day, not a moment in it. Only meaningful
       alongside `dueDate`; a time without a date is never stored. */
   dueTime: string | null;
+  /** Minutes before `dueTime` this task's reminder fires: `0` = on time,
+      `5`/`15`/`30` = that many minutes early. `null` = no reminder for this
+      task — the choice is each task's own, not a global one. Only fires
+      alongside a `dueTime`; a reminder with no moment to anchor to is never
+      stored as active. */
+  remindBefore: number | null;
   listId: string;
   tags: string[];
   subtasks: Subtask[];

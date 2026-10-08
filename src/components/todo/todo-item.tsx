@@ -5,6 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Bell,
   CalendarClock,
   CalendarDays,
   ChevronsDownUp,
@@ -53,10 +54,13 @@ import {
   dueLabel,
   dueTone,
   formatHM,
+  nextWeekdayISO,
   relativeCreated,
   todayISO,
 } from "@/lib/date";
 import { recurLabel } from "@/lib/recur";
+import { REMINDER_LEADS } from "@/lib/reminders";
+import type { MessageKey } from "@/lib/messages";
 import { LinkText } from "@/components/todo/link-text";
 import { GoalMarker } from "@/components/todo/goal-marker";
 import { cn } from "@/lib/utils";
@@ -88,6 +92,7 @@ export interface TodoItemProps {
   onDelete: () => void;
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueDate: string | null) => void;
+  onSetReminder: (remindBefore: number | null) => void;
 }
 
 /** Due-date pill tones, mapped onto the Orkest semantic scale. */
@@ -143,6 +148,7 @@ export function TodoItem({
   onDelete,
   onSetPriority,
   onSetDue,
+  onSetReminder,
 }: TodoItemProps) {
   const { t, language } = useI18n();
 
@@ -220,6 +226,18 @@ export function TodoItem({
           <M.Item onSelect={() => onSetDue(addDays(todayISO(), 1))}>
             {t("date.tomorrow")}
           </M.Item>
+          <M.Item onSelect={() => onSetDue(addDays(todayISO(), 2))}>
+            {t("date.dayAfter")}
+          </M.Item>
+          {/* 本周末 = the coming Saturday, and on a Saturday itself, today;
+              下周一 always skips a week when today is already Monday — the
+              names promise a horizon, not a no-op. */}
+          <M.Item onSelect={() => onSetDue(nextWeekdayISO(todayISO(), 6, true))}>
+            {t("date.weekend")}
+          </M.Item>
+          <M.Item onSelect={() => onSetDue(nextWeekdayISO(todayISO(), 1))}>
+            {t("date.nextMonday")}
+          </M.Item>
           <M.Item onSelect={() => onSetDue(addDays(todayISO(), 7))}>
             {t("date.inWeek")}
           </M.Item>
@@ -227,6 +245,31 @@ export function TodoItem({
           <M.Item onSelect={() => onSetDue(null)}>
             {t("todo.clearDueDate")}
           </M.Item>
+        </M.SubContent>
+      </M.Sub>
+
+      {/*
+       * The reminder rides right behind the due date, because that is what it
+       * hangs from: a reminder is a moment minus a lead, and a task with no
+       * moment has nothing to hang it on — hence the disabled trigger. The
+       * items write the task's own `remindBefore` directly, the same quick
+       * write the priority and due-date submenus perform; the editor stays
+       * the place for everything else about the task.
+       */}
+      <M.Sub>
+        <M.SubTrigger disabled={!todo.dueDate || !todo.dueTime}>
+          <Bell className="h-4 w-4" aria-hidden="true" />
+          {t("editor.reminder")}
+        </M.SubTrigger>
+        <M.SubContent>
+          <M.Item onSelect={() => onSetReminder(null)}>
+            {t("editor.reminderNone")}
+          </M.Item>
+          {REMINDER_LEADS.map((lead) => (
+            <M.Item key={lead} onSelect={() => onSetReminder(lead)}>
+              {t(`reminder.lead${lead}` as MessageKey)}
+            </M.Item>
+          ))}
         </M.SubContent>
       </M.Sub>
 
@@ -459,9 +502,28 @@ export function TodoItem({
            */}
           {expanded && (
             <div className="animate-fade-in border-t border-border py-3 pl-[2.875rem] pr-4">
-              <Badge variant={priority.badge} size="sm">
-                {t(priority.labelKey)}
-              </Badge>
+              {/*
+               * One identity row, in the order a reader asks about a card: will
+               * I be woken (the reminder's pill, only when the task asked),
+               * how important (the priority badge), what is it about (the
+               * tags, which moved up from their own block below). The pill is
+               * quiet chrome on purpose — the reminder is a fact about the
+               * schedule, not a state to scan a wall of cards for.
+               */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {todo.remindBefore !== null && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-medium text-foreground-muted">
+                    <Bell className="h-3 w-3" aria-hidden="true" />
+                    {t(`reminder.lead${todo.remindBefore}` as MessageKey)}
+                  </span>
+                )}
+                <Badge variant={priority.badge} size="sm">
+                  {t(priority.labelKey)}
+                </Badge>
+                {todo.tags.map((tag) => (
+                  <Tag key={tag}>#{tag}</Tag>
+                ))}
+              </div>
 
               {todo.notes && (
                 <LinkText
@@ -471,7 +533,7 @@ export function TodoItem({
               )}
 
               {todo.subtasks.length > 0 && (
-                <div className={cn(todo.notes && "mt-4")}>
+                <div className="mt-4">
                   <div className="mb-3 flex items-center gap-3">
                     <Progress
                       value={subProgress}
@@ -502,14 +564,6 @@ export function TodoItem({
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-
-              {todo.tags.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {todo.tags.map((tag) => (
-                    <Tag key={tag}>#{tag}</Tag>
-                  ))}
                 </div>
               )}
 
@@ -550,6 +604,7 @@ export interface TodoRowProps {
   onDelete: (todo: Todo) => void;
   onSetPriority: (id: string, priority: Priority) => void;
   onSetDue: (id: string, due: string | null) => void;
+  onSetReminder: (id: string, remindBefore: number | null) => void;
 }
 
 /**
@@ -581,6 +636,7 @@ export const TodoRow = memo(function TodoRow(props: TodoRowProps) {
       onDelete={() => props.onDelete(todo)}
       onSetPriority={(p) => props.onSetPriority(id, p)}
       onSetDue={(d) => props.onSetDue(id, d)}
+      onSetReminder={(lead) => props.onSetReminder(id, lead)}
     />
   );
 });

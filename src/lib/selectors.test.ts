@@ -20,6 +20,7 @@ function todo(patch: Partial<Todo> & Pick<Todo, "title">): Todo {
     priority: "medium",
     dueDate: null,
     dueTime: null,
+    remindBefore: null,
     listId: "list-work",
     tags: [],
     subtasks: [],

@@ -32,6 +32,8 @@ import { Hint, SubsectionLabel } from "@/components/ui/section";
 import { Textarea } from "@/components/ui/textarea";
 import { addDays, fromISODate, todayISO, toISODate } from "@/lib/date";
 import { useI18n, type I18nValue } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/messages";
+import { REMINDER_LEADS } from "@/lib/reminders";
 import { weekdayName } from "@/lib/recur";
 import { GoalMarker } from "@/components/todo/goal-marker";
 import { cn, MOD_KEY, uid } from "@/lib/utils";
@@ -97,6 +99,9 @@ interface FormState {
   dueDate: string;
   /** `""` = all-day; the picker speaks `HH:mm`, the store speaks `null`. */
   dueTime: string;
+  /** Minutes before `dueTime` to remind; `null` = no reminder for this task.
+      Whose reminder it is lives on the task — there is no global switch. */
+  remindBefore: number | null;
   listId: string;
   tags: string[];
   subtasks: Subtask[];
@@ -110,6 +115,7 @@ function emptyForm(listId: string, dueDate = ""): FormState {
     priority: "medium",
     dueDate,
     dueTime: "",
+    remindBefore: null,
     listId,
     tags: [],
     subtasks: [],
@@ -124,6 +130,7 @@ function formFromTodo(todo: Todo, fallbackListId: string): FormState {
     priority: todo.priority,
     dueDate: todo.dueDate ?? "",
     dueTime: todo.dueTime ?? "",
+    remindBefore: todo.remindBefore ?? null,
     listId: todo.listId || fallbackListId,
     tags: [...todo.tags],
     subtasks: todo.subtasks.map((s) => ({ ...s })),
@@ -201,8 +208,14 @@ export function TodoEditorDialog({
       dueDate: form.dueDate || null,
       // The invariant "a time only ever rides a date" is enforced here, at
       // the one place that writes both: clearing the date silences the time,
-      // whatever the picker still holds.
+      // whatever the picker still holds. The reminder rides the time the
+      // same way — a reminder with no moment to anchor to would never fire,
+      // so it is not stored as if it would.
       dueTime: form.dueDate && form.dueTime ? form.dueTime : null,
+      remindBefore:
+        form.dueDate && form.dueTime && form.remindBefore !== null
+          ? form.remindBefore
+          : null,
       listId: form.listId,
       tags: form.tags,
       subtasks: form.subtasks,
@@ -377,6 +390,37 @@ export function TodoEditorDialog({
                   value={form.dueTime}
                   onChange={(v) => patch({ dueTime: v })}
                 />
+              </div>
+              {/*
+               * The reminder is this task's own choice, not a global setting:
+               * one select under the time it hangs from. Idle until a time
+               * exists — a reminder with no moment is a promise about nothing
+               * — and the value it holds survives a temporarily cleared time,
+               * because re-adding the time should not cost a re-pick.
+               */}
+              <div className="mt-2 flex items-center gap-2">
+                <Select
+                  value={form.remindBefore === null ? "none" : String(form.remindBefore)}
+                  onValueChange={(v) =>
+                    patch({ remindBefore: v === "none" ? null : Number(v) })
+                  }
+                  disabled={!form.dueDate || !form.dueTime}
+                >
+                  <SelectTrigger
+                    aria-label={t("editor.reminder")}
+                    className="ml-auto w-44 shrink-0 rounded-md text-sm"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("editor.reminderNone")}</SelectItem>
+                    {REMINDER_LEADS.map((lead) => (
+                      <SelectItem key={lead} value={String(lead)}>
+                        {t(`reminder.lead${lead}` as MessageKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

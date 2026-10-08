@@ -101,6 +101,7 @@ import { useAchievementToasts } from "@/lib/achievement-toasts";
 import { useAutostart } from "@/lib/autostart";
 import { useFocusSync } from "@/lib/sync/engine";
 import { useCloseToTray, useQuitStopsFocus } from "@/lib/quit";
+import { useReminders } from "@/lib/reminders";
 import { useSettings } from "@/lib/settings";
 import { useTodayISO } from "@/lib/use-today";
 import { useTrayBridge, type TrayCommand } from "@/lib/tray";
@@ -186,6 +187,12 @@ export default function App() {
   // the log is watched here, not in the stats page, so the toast does not
   // wait for the reader to go looking for it.
   useAchievementToasts(focus.spans, language);
+
+  // 到点提醒 — the ticker that turns a task's own remindBefore into a
+  // notification. Which tasks remind is the task's choice, made in the
+  // editor; idempotent per tick (see reminders.ts), so the `todos` dep merely
+  // makes a due task that is completed or edited go quiet on the next wake.
+  useReminders(todos, language);
 
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   /** Which screen fills the space beside the sidebar — the task list, the
@@ -619,6 +626,9 @@ export default function App() {
         // the typist is standing in.
         dueDate: draft.time ? todayISO() : null,
         dueTime: draft.time,
+        // Quick-add has no reminder control yet — the editor is where a task
+        // opts in; a typed time stays a due time, nothing more.
+        remindBefore: null,
         listId: targetListId,
         tags: draft.tags,
         subtasks: [],
@@ -647,6 +657,7 @@ export default function App() {
           priority: draft.priority,
           dueDate: draft.dueDate,
           dueTime: draft.dueTime,
+          remindBefore: draft.remindBefore,
           listId: draft.listId,
           tags: draft.tags,
           subtasks: draft.subtasks,
@@ -762,9 +773,23 @@ export default function App() {
       // "recurring ⇒ has a due date" true everywhere, not just in the editor.
       updateTodo(
         id,
-        due ? { dueDate: due } : { dueDate: null, dueTime: null, recur: null }
+        due ? { dueDate: due } : { dueDate: null, dueTime: null, remindBefore: null, recur: null }
       ),
     [updateTodo]
+  );
+
+  const handleSetReminder = useCallback(
+    (id: string, remindBefore: number | null) => {
+      // A reminder anchors to the task's due time; the card menu disables
+      // itself without one, and this guard keeps the invariant at the write
+      // as well — a reminder with no moment is never stored as if it would
+      // fire. `null` passes through only for a task that had a reminder,
+      // which by the same invariant always had its time.
+      const target = todos.find((todo) => todo.id === id);
+      if (!target?.dueTime) return;
+      updateTodo(id, { remindBefore });
+    },
+    [todos, updateTodo]
   );
 
   const handleClearCompleted = useCallback(() => {
@@ -1313,6 +1338,7 @@ export default function App() {
                       onDelete={handleDelete}
                       onSetPriority={handleSetPriority}
                       onSetDue={handleSetDue}
+                      onSetReminder={handleSetReminder}
                     />
                   )}
                 />
