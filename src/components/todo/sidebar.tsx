@@ -61,6 +61,15 @@ import type { TodoList, ViewId } from "@/lib/types";
 import { paletteVar } from "@/lib/types";
 import type { Screen } from "@/lib/types";
 
+/** How far a width drag must push past the floor (in px) before it stops
+    being a resize and folds the rail away — enough travel that a drag merely
+    resting on the minimum does not collapse by accident. */
+const COLLAPSE_DRAG = 48;
+
+/** How far right a drag on the collapsed rail's seam must travel (in px)
+    before it unfolds — about the rail's own width, so it reads as deliberate. */
+const EXPAND_DRAG = 24;
+
 interface ViewDef {
   id: ViewId;
   /** Message keys, shared with the tray rows so the two can never diverge. */
@@ -345,17 +354,63 @@ export function Sidebar({
     setDragWidth(startWidth);
 
     let current = startWidth;
-    const move = (ev: PointerEvent) => {
-      current = clampWidth(startWidth + (ev.clientX - startX));
-      setDragWidth(current);
-    };
-    const end = () => {
+    const stop = () => {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", end);
       handle.removeEventListener("pointercancel", end);
+      handle.releasePointerCapture(e.pointerId);
+    };
+    const move = (ev: PointerEvent) => {
+      const raw = startWidth + (ev.clientX - startX);
+      /*
+       * Past the floor and still pulling: the drag stops being about width
+       * and becomes a wish to put the sidebar away. A further `COLLAPSE_DRAG`
+       * of over-pull folds the rail out; the last good width is kept, so
+       * re-expanding comes back to where it was.
+       */
+      if (raw <= MIN_SIDEBAR_WIDTH - COLLAPSE_DRAG) {
+        stop();
+        setCollapsed(true);
+        setDragWidth(null);
+        return;
+      }
+      current = clampWidth(raw);
+      setDragWidth(current);
+    };
+    const end = () => {
+      stop();
       onResizeSidebar(current);
       setDragWidth(null);
     };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+
+  /*
+   * The rail's own seam. Dragging it right is the mirror of over-pulling
+   * left: after `EXPAND_DRAG` the sidebar unfolds to the width it last had,
+   * and the gesture ends there — chasing the pointer into the expanded
+   * handle mid-drag would need a handoff neither mode wants.
+   */
+  const startExpand = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const startX = e.clientX;
+    handle.setPointerCapture(e.pointerId);
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      handle.releasePointerCapture(e.pointerId);
+    };
+    const move = (ev: PointerEvent) => {
+      if (ev.clientX - startX >= EXPAND_DRAG) {
+        stop();
+        setCollapsed(false);
+      }
+    };
+    const end = () => stop();
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
@@ -964,8 +1019,24 @@ export function Sidebar({
        * left-right arrow (`ew-resize`, not `col-resize`: the latter carries a
        * vertical bar that reads as a table-column divider) — and the hairline
        * the border takes on while the seam is hovered or dragged.
+       *
+       * Both modes keep the seam: expanded it resizes (and folds the rail away
+       * when dragged past the floor), collapsed it unfolds again.
        */}
-      {!collapsed && (
+      {collapsed ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("sidebar.resize")}
+          tabIndex={0}
+          onPointerDown={startExpand}
+          className={cn(
+            "relative -mr-2 z-20 w-2 shrink-0 cursor-ew-resize touch-none",
+            "after:absolute after:inset-y-0 after:left-0 after:w-px after:transition-colors focus-visible:outline-none",
+            "after:bg-transparent hover:after:bg-border-strong"
+          )}
+        />
+      ) : (
         <div
           role="separator"
           aria-orientation="vertical"

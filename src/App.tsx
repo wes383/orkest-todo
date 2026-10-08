@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import {
+  CalendarX,
+  CheckCircle2,
   ClipboardList,
+  ListTodo,
   Plus,
   SearchX,
   Trash2,
@@ -68,7 +71,7 @@ import { GoalBanner } from "@/components/todo/goal-banner";
 import { Toolbar } from "@/components/todo/toolbar";
 import { BlankAreaMenu } from "@/components/todo/blank-area-menu";
 import { QuickAdd, type QuickAddHandle } from "@/components/todo/quick-add";
-import { TodoItem } from "@/components/todo/todo-item";
+import { TodoRow } from "@/components/todo/todo-item";
 import { ListDialog } from "@/components/todo/list-dialog";
 import { useBrowserGuards } from "@/lib/browser-guards";
 import type { QuickInput } from "@/lib/quick-input";
@@ -97,7 +100,7 @@ import { useTrayBridge, type TrayCommand } from "@/lib/tray";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/date";
 import type { MessageKey } from "@/lib/messages";
-import type { GoalConfig, PaletteName, Screen, Todo, TodoList, ViewId } from "@/lib/types";
+import type { GoalConfig, PaletteName, Priority, Screen, Todo, TodoList, ViewId } from "@/lib/types";
 
 /**
  * Titles only. Views used to carry a one-line hint too, but for the default
@@ -137,6 +140,7 @@ export default function App() {
     clearCompleted,
     addList,
     updateList,
+    bumpGoalCurrent,
     moveList,
     removeList,
   } = store;
@@ -376,6 +380,16 @@ export default function App() {
     setEditingList(activeGoalList);
     setListDialogOpen(true);
   }, [activeGoalList]);
+
+  /** The banner's ± buttons: a queued functional step in the store, so a
+      burst of clicks outpacing the renders still lands every one of them. */
+  const handleGoalStep = useCallback(
+    (delta: number) => {
+      if (!activeGoalList) return;
+      bumpGoalCurrent(activeGoalList.id, delta);
+    },
+    [activeGoalList, bumpGoalCurrent]
+  );
 
   /**
    * Whether a task's list name is worth printing on its row.
@@ -655,6 +669,22 @@ export default function App() {
     [toggleSubtask, removeTodo, t]
   );
 
+  /** Id-first handlers for the memoised rows: the same writes the per-item
+      closures above perform, but with identities that survive a re-render, so
+      untouched cards skip theirs. */
+  const handleSetPriority = useCallback(
+    (id: string, priority: Priority) => updateTodo(id, { priority }),
+    [updateTodo]
+  );
+
+  const handleSetDue = useCallback(
+    (id: string, due: string | null) =>
+      // Clearing the date un-anchors any repeat, keeping the invariant
+      // "recurring ⇒ has a due date" true everywhere, not just in the editor.
+      updateTodo(id, due ? { dueDate: due } : { dueDate: null, recur: null }),
+    [updateTodo]
+  );
+
   const handleClearCompleted = useCallback(() => {
     const removed = clearCompleted();
     setConfirmClearOpen(false);
@@ -680,10 +710,11 @@ export default function App() {
   );
 
   /**
-   * Per-goal completion percent, 0–100. Derived, never stored — the same rule
-   * the smart views follow. A "tasks" goal reads its tasks (done over total);
-   * a "number" goal reads its own current over target. Either way the ratio
-   * is clamped, so a target edited downwards never pushes progress past full.
+   * Per-goal completion percent. Derived, never stored — the same rule the
+   * smart views follow. A "tasks" goal reads its tasks (done over total), a
+   * ratio that cannot leave 0–100; a "number" goal reads its own current over
+   * target and is allowed past 100 — overshooting the target is an
+   * achievement the percent should own, not one it should hide.
    */
   const goalProgress = useMemo(() => {
     const map: Record<string, number> = {};
@@ -693,7 +724,7 @@ export default function App() {
         const pct = Math.round(
           (list.goal.current / Math.max(1, list.goal.target)) * 100
         );
-        map[list.id] = Math.min(100, Math.max(0, pct));
+        map[list.id] = Math.max(0, pct);
       } else {
         const inList = todos.filter((todo) => todo.listId === list.id);
         const pct =
@@ -703,7 +734,7 @@ export default function App() {
                 (inList.filter((todo) => todo.done).length / inList.length) *
                   100
               );
-        map[list.id] = Math.min(100, Math.max(0, pct));
+        map[list.id] = Math.max(0, pct);
       }
     }
     return map;
@@ -872,6 +903,15 @@ export default function App() {
 
   /* ── Render ──────────────────────────────────────────────── */
 
+  /*
+   * Three empty states, because "nothing here" has three different causes:
+   * the store itself is empty (nothing has ever been added), filters are
+   * narrowing a non-empty store (the query or a chip is the reason), or the
+   * view or list being looked at simply has no tasks of its own — no filter
+   * is at work, and the "try another filter" copy would be gaslighting. The
+   * third splits once more, into a list (or goal) and a smart view, since the
+   * helpful next step differs.
+   */
   const emptyState =
     todos.length === 0 ? (
       <Empty className="py-16">
@@ -887,7 +927,7 @@ export default function App() {
           </Button>
         </EmptyActions>
       </Empty>
-    ) : (
+    ) : activeFilterCount > 0 ? (
       <Empty className="py-16">
         <EmptyIcon>
           <SearchX className="h-9 w-9" aria-hidden="true" />
@@ -899,6 +939,48 @@ export default function App() {
             {t("app.clearFilters")}
           </Button>
           <Button variant="ghost" onClick={openCreate}>
+            <Icon icon={Plus} size="sm" />
+            {t("app.newTask")}
+          </Button>
+        </EmptyActions>
+      </Empty>
+    ) : filters.listId ? (
+      <Empty className="py-16">
+        <EmptyIcon>
+          <ListTodo className="h-9 w-9" aria-hidden="true" />
+        </EmptyIcon>
+        <EmptyTitle>{t("app.listEmptyTitle")}</EmptyTitle>
+        <EmptyDescription>{t("app.listEmptyBody")}</EmptyDescription>
+        <EmptyActions>
+          <Button onClick={openCreate}>
+            <Icon icon={Plus} size="sm" />
+            {t("app.newTask")}
+          </Button>
+        </EmptyActions>
+      </Empty>
+    ) : filters.view === "today" ? (
+      <Empty className="py-16">
+        <EmptyIcon>
+          <CheckCircle2 className="h-9 w-9 text-green" aria-hidden="true" />
+        </EmptyIcon>
+        <EmptyTitle>{t("app.todayEmptyTitle")}</EmptyTitle>
+        <EmptyDescription>{t("app.todayEmptyBody")}</EmptyDescription>
+        <EmptyActions>
+          <Button onClick={openCreate}>
+            <Icon icon={Plus} size="sm" />
+            {t("app.newTask")}
+          </Button>
+        </EmptyActions>
+      </Empty>
+    ) : (
+      <Empty className="py-16">
+        <EmptyIcon>
+          <CalendarX className="h-9 w-9" aria-hidden="true" />
+        </EmptyIcon>
+        <EmptyTitle>{t("app.viewEmptyTitle")}</EmptyTitle>
+        <EmptyDescription>{t("app.viewEmptyBody")}</EmptyDescription>
+        <EmptyActions>
+          <Button onClick={openCreate}>
             <Icon icon={Plus} size="sm" />
             {t("app.newTask")}
           </Button>
@@ -1081,6 +1163,7 @@ export default function App() {
                   totalCount={activeGoalStats.total}
                   tasks={todos.filter((todo) => todo.listId === activeGoalList.id)}
                   onUpdateCurrent={handleGoalCurrent}
+                  onStepCurrent={handleGoalStep}
                   onEdit={handleGoalEdit}
                 />
               )}
@@ -1092,26 +1175,20 @@ export default function App() {
                   items={visible}
                   groups={grouped}
                   renderTodo={(todo) => (
-                    <TodoItem
+                    <TodoRow
                       todo={todo}
                       list={listById.get(todo.listId)}
                       showList={showRowList}
                       expanded={expandedIds.has(todo.id)}
-                      onToggleExpanded={() => toggleExpanded(todo.id)}
-                      onToggle={() => handleToggle(todo.id)}
-                      onStar={() => toggleStar(todo.id)}
-                      onToggleSubtask={(subId) =>
-                        handleToggleSubtask(todo.id, subId)
-                      }
-                      onEdit={() => openEdit(todo)}
-                      onDuplicate={() => handleDuplicate(todo)}
-                      onDelete={() => handleDelete(todo)}
-                      onSetPriority={(p) => updateTodo(todo.id, { priority: p })}
-                      onSetDue={(d) =>
-                        // Clearing the date un-anchors any repeat, keeping the invariant
-                        // "recurring ⇒ has a due date" true everywhere, not just in the editor.
-                        updateTodo(todo.id, d ? { dueDate: d } : { dueDate: null, recur: null })
-                      }
+                      onToggleExpanded={toggleExpanded}
+                      onToggle={handleToggle}
+                      onStar={toggleStar}
+                      onToggleSubtask={handleToggleSubtask}
+                      onEdit={openEdit}
+                      onDuplicate={handleDuplicate}
+                      onDelete={handleDelete}
+                      onSetPriority={handleSetPriority}
+                      onSetDue={handleSetDue}
                     />
                   )}
                 />

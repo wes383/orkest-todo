@@ -40,6 +40,8 @@ export interface GoalConfig {
   metric: "tasks" | "number";
   target: number;
   current: number;
+  /** The numbers' unit ("本", "km", "页") — purely display; empty = unitless. */
+  unit: string;
 }
 
 export interface TodoList {

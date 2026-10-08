@@ -46,6 +46,11 @@ function parseCount(value: string, fallback: number, floor: number): number {
   return Number.isFinite(parsed) && parsed >= floor ? parsed : fallback;
 }
 
+/** Strips leading zeros off a typed count ("034" → "34", "0" stays "0"). */
+function normalizeCount(value: string): string {
+  return value.replace(/^0+(?=\d)/, "");
+}
+
 export function ListDialog({
   open,
   onOpenChange,
@@ -60,6 +65,7 @@ export function ListDialog({
   const [metric, setMetric] = useState<GoalConfig["metric"]>("tasks");
   const [target, setTarget] = useState("100");
   const [current, setCurrent] = useState("0");
+  const [unit, setUnit] = useState("");
 
   // Re-seed the form each time the dialog opens so stale values never leak in.
   useEffect(() => {
@@ -73,12 +79,14 @@ export function ListDialog({
       setMetric(goal.metric);
       setTarget(String(goal.target));
       setCurrent(String(goal.current));
+      setUnit(goal.unit ?? "");
     } else {
       setIsGoal(false);
       setNotes("");
       setMetric("tasks");
       setTarget("100");
       setCurrent("0");
+      setUnit("");
     }
   }, [open, editing]);
 
@@ -92,6 +100,7 @@ export function ListDialog({
           metric,
           target: parseCount(target, 100, 1),
           current: parseCount(current, 0, 0),
+          unit: unit.trim(),
         }
       : null;
     onSubmit(name.trim(), color, goal);
@@ -222,34 +231,47 @@ export function ListDialog({
               </div>
 
               {metric === "number" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="goal-target">
-                      {t("listDialog.goalTarget")}
-                    </Label>
-                    <Input
-                      id="goal-target"
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="goal-target">
+                        {t("listDialog.goalTarget")}
+                      </Label>
+                      <Input
+                        id="goal-target"
                       type="number"
                       min={1}
                       value={target}
-                      onChange={(e) => setTarget(e.target.value)}
-                      className="mt-1.5"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="goal-current">
-                      {t("listDialog.goalCurrent")}
-                    </Label>
-                    <Input
-                      id="goal-current"
+                      onChange={(e) => setTarget(normalizeCount(e.target.value))}
+                        className="mt-1.5"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="goal-current">
+                        {t("listDialog.goalCurrent")}
+                      </Label>
+                      <Input
+                        id="goal-current"
                       type="number"
                       min={0}
                       value={current}
-                      onChange={(e) => setCurrent(e.target.value)}
+                      onChange={(e) => setCurrent(normalizeCount(e.target.value))}
+                        className="mt-1.5"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="goal-unit">{t("listDialog.goalUnit")}</Label>
+                    <Input
+                      id="goal-unit"
+                      value={unit}
+                      maxLength={10}
+                      placeholder={t("listDialog.goalUnitPlaceholder")}
+                      onChange={(e) => setUnit(e.target.value)}
                       className="mt-1.5"
                     />
                   </div>
-                </div>
+                </>
               )}
             </div>
           )}
@@ -276,15 +298,12 @@ export function ListDialog({
               </span>
               {isGoal && metric === "number" && (
                 <span className="ml-auto font-mono text-xs tabular-nums text-foreground-subtle">
-                  {Math.min(
-                    100,
-                    Math.max(
-                      0,
-                      Math.round(
-                        (parseCount(current, 0, 0) /
-                          Math.max(1, parseCount(target, 100, 1))) *
-                          100
-                      )
+                  {Math.max(
+                    0,
+                    Math.round(
+                      (parseCount(current, 0, 0) /
+                        Math.max(1, parseCount(target, 100, 1))) *
+                        100
                     )
                   )}
                   %

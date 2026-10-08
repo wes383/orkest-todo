@@ -1,4 +1,9 @@
-import { Fragment, type CSSProperties, type ReactNode } from "react";
+import {
+  Fragment,
+  memo,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   CalendarClock,
   CalendarDays,
@@ -518,3 +523,54 @@ export function TodoItem({
     </ContextMenu>
   );
 }
+
+export interface TodoRowProps {
+  todo: Todo;
+  list: TodoList | undefined;
+  showList: boolean;
+  expanded: boolean;
+  /** All handlers below are id/todo-first and owned by the caller — stable
+      across its renders, which is what lets the memo do its job. */
+  onToggleExpanded: (id: string) => void;
+  onToggle: (id: string) => void;
+  onStar: (id: string) => void;
+  onToggleSubtask: (todoId: string, subtaskId: string) => void;
+  onEdit: (todo: Todo) => void;
+  onDuplicate: (todo: Todo) => void;
+  onDelete: (todo: Todo) => void;
+  onSetPriority: (id: string, priority: Priority) => void;
+  onSetDue: (id: string, due: string | null) => void;
+}
+
+/**
+ * The memoised row the virtual list actually mounts.
+ *
+ * `TodoItem` itself takes per-item closures, which change identity on every
+ * render of the list — a `memo` there would never hit. The row wrapper takes
+ * only stable references (the parent's id-first handlers) plus the facts that
+ * genuinely changed (the todo, its list, whether it is expanded), binds the
+ * closures here, and skips its whole subtree — Radix menus and all — when
+ * none of those changed. Thirty cards then scroll and expand without
+ * re-rendering the twenty-nine that did not move.
+ */
+export const TodoRow = memo(function TodoRow(props: TodoRowProps) {
+  const { todo, list, showList, expanded } = props;
+  const id = todo.id;
+  return (
+    <TodoItem
+      todo={todo}
+      list={list}
+      showList={showList}
+      expanded={expanded}
+      onToggleExpanded={() => props.onToggleExpanded(id)}
+      onToggle={() => props.onToggle(id)}
+      onStar={() => props.onStar(id)}
+      onToggleSubtask={(subId) => props.onToggleSubtask(id, subId)}
+      onEdit={() => props.onEdit(todo)}
+      onDuplicate={() => props.onDuplicate(todo)}
+      onDelete={() => props.onDelete(todo)}
+      onSetPriority={(p) => props.onSetPriority(id, p)}
+      onSetDue={(d) => props.onSetDue(id, d)}
+    />
+  );
+});

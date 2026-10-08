@@ -287,7 +287,11 @@ function load(lang: Language): PersistedState {
       // Coercing once at the door keeps every reader free of the question.
       todos: parsed.todos.map((todo) => ({ ...todo, recur: todo.recur ?? null })),
       lists: (parsed.lists.length > 0 ? parsed.lists : SEED[lang].lists).map(
-        (list) => ({ ...list, goal: list.goal ?? null })
+        (list) => ({
+          ...list,
+          // `unit` postdates the first goal release — old storage omits it.
+          goal: list.goal ? { ...list.goal, unit: list.goal.unit ?? "" } : null,
+        })
       ),
     };
   } catch {
@@ -524,6 +528,29 @@ export function useTodoStore(lang: Language) {
   }, []);
 
   /**
+   * Steps a number goal's `current` by `delta`, floor 0.
+   *
+   * A function over the queued state rather than a precomputed patch: the
+   * banner's ± buttons are clicked in bursts faster than renders commit, and
+   * a patch built from the render's snapshot would fold that burst into a
+   * single step. Read from `s` inside the updater, every click adds onto
+   * whatever the clicks before it landed — nothing coalesces.
+   */
+  const bumpGoalCurrent = useCallback((id: string, delta: number) => {
+    setState((s) => ({
+      ...s,
+      lists: s.lists.map((l) =>
+        l.id === id && l.goal
+          ? {
+              ...l,
+              goal: { ...l.goal, current: Math.max(0, l.goal.current + delta) },
+            }
+          : l
+      ),
+    }));
+  }, []);
+
+  /**
    * Moves one list to an index, the sidebar's drag handle speaking straight to
    * it. The array order *is* the display order — creation order until a drag
    * rearranges it — and persists through the same state write as everything
@@ -595,6 +622,7 @@ export function useTodoStore(lang: Language) {
     clearCompleted,
     addList,
     updateList,
+    bumpGoalCurrent,
     moveList,
     removeList,
     clearAll,
