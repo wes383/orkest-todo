@@ -46,9 +46,8 @@
  *    overflow a month cell, and for reading a day as a schedule rather than
  *    a count; if a week never gets crowded, the month view is enough.
  *
- * Weeks run Monday-first, the way every other calendar-shaped thing in the
- * app reads (`focus-spans.ts`: "so the figures read the same in either
- * language").
+ * Weeks open on the week-start setting (周一 or 周日, see `settings.ts`), the
+ * way every other calendar-shaped thing in the app reads.
  */
 
 import {
@@ -97,6 +96,7 @@ import {
   toISODate,
 } from "@/lib/date";
 import { useTodayISO } from "@/lib/use-today";
+import type { FirstDayOfWeek } from "@/lib/settings";
 import { recurLabel } from "@/lib/recur";
 import {
   PRIORITY_META,
@@ -164,12 +164,13 @@ function shiftMonth(month: MonthKey, delta: number): MonthKey {
 
 /**
  * The ISO dates of the weeks covering `month`, one inner array a week,
- * Monday-first. A month gets exactly as many rows as it spans — four to six —
- * so the grid is the month's own shape rather than a fixed six-row stencil.
+ * opening on the week-start setting. A month gets exactly as many rows as it
+ * spans — four to six — so the grid is the month's own shape rather than a
+ * fixed six-row stencil.
  */
-function gridWeeks(month: MonthKey): string[][] {
+function gridWeeks(month: MonthKey, weekStartDow: 0 | 1): string[][] {
   const first = fromISODate(`${month}-01`);
-  const back = (first.getDay() + 6) % 7;
+  const back = (first.getDay() - weekStartDow + 7) % 7;
   let cursor = new Date(
     first.getFullYear(),
     first.getMonth(),
@@ -192,18 +193,22 @@ function gridWeeks(month: MonthKey): string[][] {
   return weeks;
 }
 
-/** The Monday on or before `iso` — the week's first day, the same
-    Monday-first reading the month grid uses. */
-function weekStart(iso: string): string {
+/** The week's first day on or before `iso` — the same week-start reading the
+    month grid uses. */
+function weekStart(iso: string, weekStartDow: 0 | 1): string {
   const d = fromISODate(iso);
   return toISODate(
-    new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7))
+    new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate() - ((d.getDay() - weekStartDow + 7) % 7)
+    )
   );
 }
 
-/** The seven ISO dates of the week `anchor` falls in, Monday-first. */
-function weekDays(anchor: string): string[] {
-  const first = fromISODate(weekStart(anchor));
+/** The seven ISO dates of the week `anchor` falls in, week-start first. */
+function weekDays(anchor: string, weekStartDow: 0 | 1): string[] {
+  const first = fromISODate(weekStart(anchor, weekStartDow));
   return Array.from({ length: 7 }, (_, i) =>
     toISODate(
       new Date(first.getFullYear(), first.getMonth(), first.getDate() + i)
@@ -211,14 +216,17 @@ function weekDays(anchor: string): string[] {
   );
 }
 
-/** The weekday names in Monday-first order — the same trick the heat grids
-    use: 2024-01-01 was a Monday, so the names come from the platform's
-    calendar rather than from a dictionary. */
-function weekdayNames(lang: Language): string[] {
+/** The weekday names in week-start order — the same trick the heat grids
+    use: the names come from the platform's calendar (2024-01-01 was a
+    Monday), rotated into the week's own order. */
+function weekdayNames(lang: Language, weekStartDow: 0 | 1): string[] {
   const format = new Intl.DateTimeFormat(LOCALES[lang], { weekday: "short" });
-  return Array.from({ length: 7 }, (_, index) =>
+  const byGetDay = Array.from({ length: 7 }, (_, index) =>
     format.format(new Date(2024, 0, 1 + index))
   );
+  return weekStartDow === 0
+    ? [byGetDay[6], ...byGetDay.slice(0, 6)]
+    : byGetDay;
 }
 
 /** The priority bar a chip and a day-menu row wear: the two loud priorities
@@ -680,6 +688,9 @@ export interface CalendarViewProps {
   onToggle: (todoId: string) => void;
   onToggleStar: (todoId: string) => void;
   onToggleSubtask: (todoId: string, subtaskId: string) => void;
+  /** Which morning a week opens on — the month grid's leading blanks, the
+      week view's seven days and the weekday header all read it. */
+  firstDay: FirstDayOfWeek;
 }
 
 export function CalendarView({
@@ -692,9 +703,11 @@ export function CalendarView({
   onToggle,
   onToggleStar,
   onToggleSubtask,
+  firstDay,
 }: CalendarViewProps) {
   const { t, language } = useI18n();
   const today = useTodayISO();
+  const weekStartDow = firstDay === "sunday" ? 0 : 1;
   /** 月 or 周 — the two shapes one cursor is read as. */
   const [mode, setMode] = useState<CalendarMode>("month");
   /** A day inside whatever period is on screen: the month is read off it in
@@ -739,14 +752,20 @@ export function CalendarView({
     return map;
   }, [todos, showDone]);
 
-  const weeks = useMemo(() => gridWeeks(month), [month]);
+  const weeks = useMemo(
+    () => gridWeeks(month, weekStartDow),
+    [month, weekStartDow]
+  );
   /** The cells on screen: the month's rows flattened, or the week's seven
       days in one row. */
   const days = useMemo(
-    () => (mode === "week" ? weekDays(anchor) : weeks.flat()),
-    [mode, anchor, weeks]
+    () => (mode === "week" ? weekDays(anchor, weekStartDow) : weeks.flat()),
+    [mode, anchor, weeks, weekStartDow]
   );
-  const weekNames = useMemo(() => weekdayNames(language), [language]);
+  const weekNames = useMemo(
+    () => weekdayNames(language, weekStartDow),
+    [language, weekStartDow]
+  );
 
   /** 月视图's step: the first of the adjacent month. Anchored to the 1st on
       purpose — an anchor day like the 31st has no next-month twin. */
@@ -774,7 +793,7 @@ export function CalendarView({
   const onToday =
     mode === "month"
       ? month === monthOf(today)
-      : weekStart(anchor) === weekStart(today);
+      : weekStart(anchor, weekStartDow) === weekStart(today, weekStartDow);
 
   /* The month and year the grid is on, split for the two dropdowns. */
   const year = Number(month.slice(0, 4));

@@ -109,14 +109,24 @@ describe("date filter", () => {
       todo({ title: "下周的", dueDate: addDays(today, 7) }),
       todo({ title: "两周后", dueDate: addDays(today, 14) }),
     ];
-    const pick = (dateFilter: Filters["dateFilter"]) =>
-      selectTodos(todos, { ...DEFAULT_FILTERS, dateFilter }, "zh").map(
-        (t) => t.title
-      );
+    const pick = (
+      dateFilter: Filters["dateFilter"],
+      weekStartDow: 0 | 1 = 1
+    ) =>
+      selectTodos(
+        todos,
+        { ...DEFAULT_FILTERS, dateFilter },
+        "zh",
+        weekStartDow
+      ).map((t) => t.title);
     // Whatever weekday today is, today+7 sits inside next week and today+14
     // sits outside it — the two assertions pin both edges of the span.
     expect(pick("thisWeek")).toEqual(["本周内"]);
     expect(pick("nextWeek")).toEqual(["下周的"]);
+    // The same edges hold on a Sunday-first week, where the span shifts but
+    // never widens past its own seven days.
+    expect(pick("thisWeek", 0)).toEqual(["本周内"]);
+    expect(pick("nextWeek", 0)).toEqual(["下周的"]);
   });
 });
 

@@ -171,7 +171,12 @@ export default function App() {
     setHideShortcutHints,
     setHideSidebarCounts,
     setSidebarWidth,
+    setFirstDayOfWeek,
   } = useSettings();
+
+  /** The week's first day, as the JS `getDay()` the date arithmetic speaks —
+      1 周一 / 0 周日 — handed to the selectors and the week-shaped screens. */
+  const weekStartDow = settings.firstDayOfWeek === "sunday" ? 0 : 1;
 
   /*
    * The focus log, live — held here rather than inside the focus view so that
@@ -315,8 +320,8 @@ export default function App() {
   const listCounts = useMemo(() => computeListCounts(activeTodos), [activeTodos]);
   const tags = useMemo(() => collectTags(activeTodos, language), [activeTodos, language]);
   const visible = useMemo(
-    () => selectTodos(activeTodos, filters, language),
-    [activeTodos, filters, today, language]
+    () => selectTodos(activeTodos, filters, language, weekStartDow),
+    [activeTodos, filters, today, language, weekStartDow]
   );
 
   const grouped = useMemo(() => {
@@ -1205,6 +1210,7 @@ export default function App() {
             <CalendarView
               todos={activeTodos}
               lists={lists}
+              firstDay={settings.firstDayOfWeek}
               onEdit={openEdit}
               onCreateFor={openCreateFor}
               onReschedule={handleReschedule}
@@ -1237,6 +1243,7 @@ export default function App() {
               spans={focus.spans}
               todos={todos}
               lists={lists}
+              firstDay={settings.firstDayOfWeek}
               onReschedule={focus.reschedule}
               onSplit={focus.split}
               onDelete={focus.remove}
@@ -1260,6 +1267,7 @@ export default function App() {
               setGlobalShortcuts={setGlobalShortcuts}
               setHideShortcutHints={setHideShortcutHints}
               setHideSidebarCounts={setHideSidebarCounts}
+              setFirstDayOfWeek={setFirstDayOfWeek}
               autostart={autostart}
               focusWidget={focusWidget}
               sync={sync}

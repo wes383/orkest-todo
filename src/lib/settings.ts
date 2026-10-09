@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { detectLanguage } from "@/lib/i18n";
 import type { ViewId } from "@/lib/types";
 
 /**
@@ -32,6 +33,11 @@ export const HIDEABLE_SCREENS: HideableScreen[] = [
   "stats",
   "archive",
 ];
+
+/** Which morning a week opens on. Two answers only — 周一 and 周日 are the
+    two starts anyone's paper calendar offers, and a third option would double
+    the test surface for a choice nobody makes. */
+export type FirstDayOfWeek = "monday" | "sunday";
 
 export interface AppSettings {
   /** `true` = the view's row is not printed in the sidebar. */
@@ -88,6 +94,11 @@ export interface AppSettings {
       The collapsed rail ignores it: a 56px square column is one decision, not
       a scale of it. */
   sidebarWidth: number;
+  /** The weekday every week opens on — the anchor the "本周" filters, the
+      week trend bars, the calendar grids and the heat maps all share. Shipped
+      per language on first run (中文 → 周一, everything else → 周日) and the
+      user's to change from then on; see `defaultFirstDay`. */
+  firstDayOfWeek: FirstDayOfWeek;
 }
 
 const STORAGE_KEY = "orkest-settings.v1";
@@ -140,7 +151,18 @@ const DEFAULTS: AppSettings = {
   // asked for: the tray icon is not where most people look for a running app.
   closeToTray: false,
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+  firstDayOfWeek: "monday",
 };
+
+/** The week-start a first run opens with, read off the language the app is
+    about to open in: 中文 keeps the 周一 habit, everything else starts on
+    Sunday. Only consulted where the stored settings carry no answer — a user
+    who has picked (or silently received) a value keeps it, so switching the
+    language later never drags the week along with it. */
+function defaultFirstDay(): FirstDayOfWeek {
+  if (typeof window === "undefined") return "monday";
+  return detectLanguage() === "zh" ? "monday" : "sunday";
+}
 
 /** One number out of a file someone may have hand-edited: anything that is not
     a finite number falls back to the shipped default, anything out of range is
@@ -167,13 +189,15 @@ function load(): AppSettings {
   if (typeof window === "undefined") return DEFAULTS;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULTS;
+    if (!raw) return { ...DEFAULTS, firstDayOfWeek: defaultFirstDay() };
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     // Missing keys fall back to the shipped value — an old or partial file
     // never hides a view the user did not hide, and never makes a pill they
     // never dimmed translucent. The three numbers are read through `num`, so a
     // hand-edited `"abc"` or `9999` lands on the default or on the nearer end
-    // of its range instead of on the screen.
+    // of its range instead of on the screen. The week start falls back per
+    // language rather than to a fixed day: an existing install picking up this
+    // key for the first time should land on the answer its language implies.
     return {
       hiddenViews: {
         ...DEFAULTS.hiddenViews,
@@ -202,9 +226,14 @@ function load(): AppSettings {
       sidebarWidth: Math.round(
         num(parsed.sidebarWidth, DEFAULTS.sidebarWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
       ),
+      firstDayOfWeek:
+        parsed.firstDayOfWeek === "sunday" ||
+        parsed.firstDayOfWeek === "monday"
+          ? parsed.firstDayOfWeek
+          : defaultFirstDay(),
     };
   } catch {
-    return DEFAULTS;
+    return { ...DEFAULTS, firstDayOfWeek: defaultFirstDay() };
   }
 }
 
@@ -224,6 +253,14 @@ export function spanLimits(): { minMs: number; maxMs: number } {
     minMs: current.minSpanMinutes * 60_000,
     maxMs: current.maxSpanHours * 3_600_000,
   };
+}
+
+/** The week's first day, read from the same module-level mirror — the week
+    arithmetic in `focus-spans` and `task-stats` runs inside memo initialisers
+    and module functions, where no hook reaches. Render-path readers take the
+    value as a prop instead, so a flip re-renders them with the new answer. */
+export function firstDayOfWeek(): FirstDayOfWeek {
+  return current.firstDayOfWeek;
 }
 
 export function useSettings() {
@@ -303,6 +340,10 @@ export function useSettings() {
     setSettings((s) => ({ ...s, sidebarWidth }));
   }, []);
 
+  const setFirstDayOfWeek = useCallback((firstDayOfWeek: FirstDayOfWeek) => {
+    setSettings((s) => ({ ...s, firstDayOfWeek }));
+  }, []);
+
   return {
     settings,
     setViewVisible,
@@ -315,5 +356,6 @@ export function useSettings() {
     setHideShortcutHints,
     setHideSidebarCounts,
     setSidebarWidth,
+    setFirstDayOfWeek,
   };
 }

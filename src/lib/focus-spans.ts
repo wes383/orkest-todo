@@ -24,7 +24,12 @@ import {
   type Language,
   type MessageKey,
 } from "@/lib/messages";
-import { DEFAULT_MIN_SPAN_MINUTES, spanLimits } from "@/lib/settings";
+import {
+  DEFAULT_MIN_SPAN_MINUTES,
+  firstDayOfWeek,
+  spanLimits,
+  type FirstDayOfWeek,
+} from "@/lib/settings";
 
 /**
  * One stretch of the day spent in the "useful" state, in epoch ms. `end` is
@@ -93,11 +98,16 @@ export function dayBounds(ms: number): [number, number] {
   ];
 }
 
-/** Monday of the week `ms` falls in. Weeks run from Monday rather than from the
-    locale's idea of a week, so the figures read the same in either language. */
-export function startOfWeek(ms: number): number {
+/** The week's first morning, on or before `ms`. The anchor follows the
+    week-start setting (周一 or 周日); the default reads the module mirror,
+    and render-path callers pass the setting explicitly so a flip re-renders
+    them with the new answer. */
+export function startOfWeek(
+  ms: number,
+  firstDay: FirstDayOfWeek = firstDayOfWeek()
+): number {
   const d = new Date(startOfDay(ms));
-  const back = (d.getDay() + 6) % 7;
+  const back = firstDay === "sunday" ? d.getDay() : (d.getDay() + 6) % 7;
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() - back).getTime();
 }
 
@@ -518,8 +528,9 @@ export const PERIODS: { key: Period; labelKey: MessageKey }[] = [
 /** The midnights a period covers: the ones elapsed so far, ending today. A
     period in progress is measured only over the days it has actually had.
 
-    Week keeps its anchor at Monday — seven days is short enough that a blank
-    Monday is a fact about the week rather than a distortion of it. Month and
+    Week keeps its anchor at the week-start setting — seven days is short
+    enough that a blank first day is a fact about the week rather than a
+    distortion of it. Month and
     year do not: averaging a history three days old across a whole September, let
     alone a whole year, would read as a collapse the person never had, and the
     day count on the card would claim days they never logged. So those two begin
@@ -680,8 +691,13 @@ export function hourTotals(spans: FocusSpan[], now: number): number[] {
 }
 
 /** Useful time bucketed by weekday and hour of the local day, over the whole
-    log: seven rows, Monday first, each twenty-four cells wide. */
-export function heatmap(spans: FocusSpan[], now: number): number[][] {
+    log: seven rows opening on the week-start setting, each twenty-four cells
+    wide. */
+export function heatmap(
+  spans: FocusSpan[],
+  now: number,
+  firstDay: FirstDayOfWeek = firstDayOfWeek()
+): number[][] {
   const grid = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
 
   for (const span of spans) {
@@ -696,9 +712,11 @@ export function heatmap(spans: FocusSpan[], now: number): number[][] {
       ).getTime();
       const sliceEnd = Math.min(end, nextHour);
       if (countsOn(span, startOfDay(cursor), dayBounds(cursor)[1], now)) {
-        // `getDay` counts from Sunday; the grid counts from Monday, so that it
-        // reads down the page the way a week is written.
-        grid[(d.getDay() + 6) % 7][d.getHours()] += sliceEnd - cursor;
+        // `getDay` counts from Sunday; the grid counts from the week's first
+        // day, so that it reads down the page the way a week is written.
+        const row =
+          firstDay === "sunday" ? d.getDay() : (d.getDay() + 6) % 7;
+        grid[row][d.getHours()] += sliceEnd - cursor;
       }
       cursor = sliceEnd;
     }

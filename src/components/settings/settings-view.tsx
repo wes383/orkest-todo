@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, Copy, Download, ExternalLink, Languages, QrCode, RefreshCw, Trash2 } from "lucide-react";
+import { CalendarDays, Check, Copy, Download, ExternalLink, Languages, QrCode, RefreshCw, Trash2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +61,7 @@ import {
   HIDEABLE_VIEWS,
   MIN_WIDGET_OPACITY,
   type AppSettings,
+  type FirstDayOfWeek,
   type HideableScreen,
   type HideableView,
 } from "@/lib/settings";
@@ -232,6 +233,9 @@ export interface SettingsViewProps {
   /** 隐藏侧边栏数字 — whether the sidebar's rows print their right-edge
       numbers at all. Presentation only: the counts are derived either way. */
   setHideSidebarCounts: (value: boolean) => void;
+  /** 一周开始于 — the anchor the 本周 filters, the calendar grids and the
+      heat maps share; see `settings.ts` for where the default comes from. */
+  setFirstDayOfWeek: (value: FirstDayOfWeek) => void;
   /** 开机自启 — the OS login item, read and written by the plugin rather than
       stored here; see `autostart.ts` for why it is the one row with no entry in
       `AppSettings`. */
@@ -275,6 +279,7 @@ export function SettingsView({
   setGlobalShortcuts,
   setHideShortcutHints,
   setHideSidebarCounts,
+  setFirstDayOfWeek,
   onDeleteAllData,
   autostart,
   focusWidget,
@@ -502,6 +507,32 @@ export function SettingsView({
                         {LANGUAGE_LABELS[option]}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </Row>
+              <Row
+                label={t("settings.firstDay")}
+                icon={CalendarDays}
+                htmlFor="settings-first-day"
+              >
+                <Select
+                  value={settings.firstDayOfWeek}
+                  onValueChange={(v) => setFirstDayOfWeek(v as FirstDayOfWeek)}
+                >
+                  <SelectTrigger
+                    id="settings-first-day"
+                    aria-label={t("settings.firstDay")}
+                    className="h-9 w-36 rounded-md text-sm"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monday">
+                      {t("settings.firstDay.monday")}
+                    </SelectItem>
+                    <SelectItem value="sunday">
+                      {t("settings.firstDay.sunday")}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </Row>

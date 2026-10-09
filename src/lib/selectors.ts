@@ -42,10 +42,12 @@ export function dateFilterApplies(view: ViewId): boolean {
 }
 
 /** The ISO date span a named filter covers, `[start, end]` inclusive. Weeks
-    run Monday-first; months and years are the calendar's own. */
+    open on the week-start setting (`weekStartDow`, the JS `getDay()` of the
+    first day — 1 周一 / 0 周日); months and years are the calendar's own. */
 function dateFilterRange(
   key: Exclude<DateFilterKey, "withDate" | "noDate">,
-  today: string
+  today: string,
+  weekStartDow: 0 | 1
 ): { start: string; end: string } {
   const now = fromISODate(today);
   switch (key) {
@@ -57,10 +59,11 @@ function dateFilterRange(
       return { start: addDays(today, 2), end: addDays(today, 2) };
     case "thisWeek":
     case "nextWeek": {
-      // Monday of this week — `(day + 6) % 7` days back from a Sunday-first
-      // `getDay()`.
-      const monday = addDays(today, -((now.getDay() + 6) % 7));
-      const start = key === "thisWeek" ? monday : addDays(monday, 7);
+      // The week's first day — the days between it and today, counted on the
+      // dial rather than across midnight, so a week starting on today reads
+      // zero back.
+      const first = addDays(today, -((now.getDay() - weekStartDow + 7) % 7));
+      const start = key === "thisWeek" ? first : addDays(first, 7);
       return { start, end: addDays(start, 6) };
     }
     case "thisMonth":
@@ -78,11 +81,16 @@ function dateFilterRange(
   }
 }
 
-function matchesDateFilter(todo: Todo, key: DateFilterKey, today: string): boolean {
+function matchesDateFilter(
+  todo: Todo,
+  key: DateFilterKey,
+  today: string,
+  weekStartDow: 0 | 1
+): boolean {
   if (key === "withDate") return todo.dueDate !== null;
   if (key === "noDate") return todo.dueDate === null;
   if (!todo.dueDate) return false;
-  const { start, end } = dateFilterRange(key, today);
+  const { start, end } = dateFilterRange(key, today, weekStartDow);
   return todo.dueDate >= start && todo.dueDate <= end;
 }
 
@@ -169,11 +177,17 @@ function compareByDue(a: Todo, b: Todo): number {
  * argument silently uses the *device* locale, so an app switched to English on
  * a Chinese machine would keep sorting titles by pinyin — the collation has to
  * follow the app's language, exactly like every other string.
+ *
+ * `weekStartDow` anchors the 本周 / 下周 date filters — the JS `getDay()` of
+ * the week's first day (1 = 周一, 0 = 周日), handed in by App from the
+ * week-start setting. Defaults to Monday, which is what every caller before
+ * the setting existed read.
  */
 export function selectTodos(
   todos: Todo[],
   filters: Filters,
-  lang: Language
+  lang: Language,
+  weekStartDow: 0 | 1 = 1
 ): Todo[] {
   const query = filters.query.trim().toLowerCase();
   const status = effectiveStatus(filters);
@@ -193,7 +207,7 @@ export function selectTodos(
     if (
       filters.dateFilter &&
       dateFilterApplies(filters.view) &&
-      !matchesDateFilter(todo, filters.dateFilter, today)
+      !matchesDateFilter(todo, filters.dateFilter, today, weekStartDow)
     ) {
       return false;
     }

@@ -68,6 +68,19 @@ const DATE_PICKER_SIZE_FOR_DENSITY: Record<Density, "xs" | "sm" | "md" | "lg"> =
  */
 const pick = (zh: string, en: string, isZh: boolean) => (isZh ? zh : en);
 
+/** The week's first day as the JS `getDay()` — read straight out of the
+    settings blob, because this is a library copy with no context above it.
+    Anything unreadable falls back to Monday, the shipped behaviour. */
+function storedWeekStartDow(): 0 | 1 {
+  try {
+    const raw = window.localStorage.getItem("orkest-settings.v1");
+    const parsed = raw ? (JSON.parse(raw) as { firstDayOfWeek?: unknown }) : null;
+    return parsed?.firstDayOfWeek === "sunday" ? 0 : 1;
+  } catch {
+    return 1;
+  }
+}
+
 /**
  * Default shortcut column.
  *
@@ -80,6 +93,7 @@ function getDefaultShortcuts(
   mode: DatePickerMode,
   isZh: boolean
 ): DatePickerShortcut[] {
+  const weekStartDow = storedWeekStartDow();
   const today = () => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -92,9 +106,7 @@ function getDefaultShortcuts(
   };
   const startOfWeek = () => {
     const d = today();
-    const day = d.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
+    d.setDate(d.getDate() - ((d.getDay() - weekStartDow + 7) % 7));
     return d;
   };
   const endOfWeek = () => {
@@ -158,7 +170,13 @@ function getDefaultShortcuts(
     { label: pick("今天", "Today", isZh), getValue: today },
     { label: pick("昨天", "Yesterday", isZh), getValue: () => addDays(-1) },
     { label: pick("明天", "Tomorrow", isZh), getValue: () => addDays(1) },
-    { label: pick("本周一", "This Monday", isZh), getValue: startOfWeek },
+    {
+      label:
+        weekStartDow === 0
+          ? pick("本周日", "This Sunday", isZh)
+          : pick("本周一", "This Monday", isZh),
+      getValue: startOfWeek,
+    },
     { label: pick("本月初", "Start of month", isZh), getValue: startOfMonth },
   ];
 }

@@ -17,6 +17,7 @@ import {
   startOfWeek,
   type FocusSpan,
 } from "@/lib/focus-spans";
+import { firstDayOfWeek, type FirstDayOfWeek } from "@/lib/settings";
 import type { Todo, TodoList } from "@/lib/types";
 
 export interface TaskStats {
@@ -34,7 +35,11 @@ export interface TaskStats {
   daily: { day: number; count: number }[];
 }
 
-export function taskStats(todos: Todo[], now: number): TaskStats {
+export function taskStats(
+  todos: Todo[],
+  now: number,
+  firstDay: FirstDayOfWeek = firstDayOfWeek()
+): TaskStats {
   const perDay = new Map<number, number>();
   let totalDone = 0;
 
@@ -50,7 +55,7 @@ export function taskStats(todos: Todo[], now: number): TaskStats {
     .map(([day, count]) => ({ day, count }));
 
   const today = startOfDay(now);
-  const weekFrom = startOfWeek(now);
+  const weekFrom = startOfWeek(now, firstDay);
   let weekDone = 0;
   for (const { day, count } of daily) {
     if (day >= weekFrom && day <= today) weekDone += count;

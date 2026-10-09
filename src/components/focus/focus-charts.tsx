@@ -23,6 +23,7 @@ import {
   startOfWeek,
   type DayBucket,
 } from "@/lib/focus-spans";
+import type { FirstDayOfWeek } from "@/lib/settings";
 
 /** The panel the log is laid out in — a hairline on the sheet's own surface,
     with the title standing in the margin above the figures it names. */
@@ -328,14 +329,20 @@ export function Line({
   );
 }
 
-/** A week of hours: seven rows from Monday, twenty-four cells across. */
-function weekdayLabels(lang: Language): string[] {
-  // 2024-01-01 was a Monday, so the grid's own order falls out of the platform's
-  // weekday names rather than out of a second dictionary to keep in step.
+/** A week of hours: seven rows opening on the week-start setting, twenty-four
+    cells across. */
+function weekdayLabels(lang: Language, weekStartDow: 0 | 1): string[] {
+  // The names fall out of the platform's calendar rather than out of a second
+  // dictionary: 2024-01-01 was a Monday, so `byGetDay[i]` names the weekday
+  // with `getDay() === (i + 1) % 7`. A Sunday-first week reads the same seven
+  // names starting from the back.
   const format = new Intl.DateTimeFormat(LOCALES[lang], { weekday: "short" });
-  return Array.from({ length: 7 }, (_, index) =>
+  const byGetDay = Array.from({ length: 7 }, (_, index) =>
     format.format(new Date(2024, 0, 1 + index))
   );
+  return weekStartDow === 0
+    ? [byGetDay[6], ...byGetDay.slice(0, 6)]
+    : byGetDay;
 }
 
 /** The hours named under the grid: the same every-sixth-one marks the rail
@@ -367,16 +374,20 @@ function heatStep(value: number, fullest: number): number {
 export function Heat({
   grid,
   lang,
+  firstDay,
   read,
 }: {
   grid: number[][];
   lang: Language;
+  /** Which morning a week opens on — the row order must match the grid the
+      caller computed, which was built with the same answer. */
+  firstDay: FirstDayOfWeek;
   /** Turns a cell's milliseconds into the words the tooltip shows. */
   read: (ms: number) => string;
 }) {
   const { tip, enter, leave } = useTip();
   const FULLEST = Math.max(...grid.flat(), 1);
-  const days = weekdayLabels(lang);
+  const days = weekdayLabels(lang, firstDay === "sunday" ? 0 : 1);
 
   return (
     <div>
@@ -438,8 +449,9 @@ const YEAR_WEEKDAY_W = 28;
 const YEAR_CELL_MIN = 10;
 
 /**
- * The GitHub-style year grid: one cell a day, a column a week, Monday on top
- * the way every other reading of the log runs. The grid shows one whole
+ * The GitHub-style year grid: one cell a day, a column a week, the week
+ * opening on the week-start setting at the top the way every other reading of
+ * the log runs. The grid shows one whole
  * calendar year — January through December, with the weeks' spillover days
  * left blank — and the card it lives in owns the year being shown, stepping
  * it between the first year the log reaches and this one.
@@ -456,6 +468,7 @@ export function YearHeat({
   today,
   year,
   lang,
+  firstDay,
   read,
   lessLabel,
   moreLabel,
@@ -467,6 +480,9 @@ export function YearHeat({
   /** The calendar year being shown. */
   year: number;
   lang: Language;
+  /** Which morning a week opens on — the first column's back-step and the
+      weekday gutter's names both read it. */
+  firstDay: FirstDayOfWeek;
   /** Turns a cell's milliseconds into the words the tooltip shows. */
   read: (ms: number) => string;
   /** The two ends of the legend under the grid. */
@@ -474,6 +490,7 @@ export function YearHeat({
   moreLabel: string;
 }) {
   const { tip, enter, leave } = useTip();
+  const weekStartDow = firstDay === "sunday" ? 0 : 1;
 
   const { cols, fullest } = useMemo(() => {
     const jan1 = new Date(year, 0, 1).getTime();
@@ -482,7 +499,7 @@ export function YearHeat({
     let fullest = 1;
     // Calendar arithmetic, not ms: a daylight-saving week is still one week.
     for (
-      let week = startOfWeek(jan1);
+      let week = startOfWeek(jan1, firstDay);
       week <= dec31;
       week = shiftDays(week, 7)
     ) {
@@ -500,7 +517,7 @@ export function YearHeat({
       cols.push(col);
     }
     return { cols, fullest };
-  }, [buckets, today, year]);
+  }, [buckets, today, year, firstDay]);
 
   /*
    * The grid fills its container. Measuring the scroller itself (rather than
@@ -566,13 +583,18 @@ export function YearHeat({
     [lang]
   );
 
-  /* Monday, Wednesday and Friday named at their rows — all seven would be
-     four copies of what three already say. 2024-01-01 was a Monday, so the
-     names fall out of the platform's calendar. */
+  /* The first, third and fifth rows named — all seven would be four copies of
+     what three already say. The names come from the platform's calendar
+     (2024-01-01 was a Monday), rotated into the week's own order. */
   const dayNames = useMemo(() => {
     const format = new Intl.DateTimeFormat(LOCALES[lang], { weekday: "short" });
-    return [0, 2, 4].map((index) => format.format(new Date(2024, 0, 1 + index)));
-  }, [lang]);
+    const byGetDay = Array.from({ length: 7 }, (_, index) =>
+      format.format(new Date(2024, 0, 1 + index))
+    );
+    return [0, 2, 4].map((row) =>
+      weekStartDow === 0 ? byGetDay[(row + 6) % 7] : byGetDay[row]
+    );
+  }, [lang, weekStartDow]);
 
   return (
     /*
@@ -646,7 +668,10 @@ export function YearHeat({
                         ? // Days outside the year — or not yet lived — keep
                           // the grid's shape without pretending to be days.
                           "opacity-0"
-                        : HEAT_STEPS[heatStep(cell.value, fullest)]
+                        : // A cell that answers to the pointer reads as
+                          // touchable, the way the hour grid's do.
+                          "cursor-pointer " +
+                            HEAT_STEPS[heatStep(cell.value, fullest)]
                     )}
                     style={{ width: cellSize, height: cellSize }}
                   />
