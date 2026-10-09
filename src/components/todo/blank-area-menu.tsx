@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   ArrowDownWideNarrow,
+  CalendarDays,
   Check,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -20,12 +21,18 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Icon } from "@/components/ui/icon";
+import { DATE_FILTER_LABEL_KEYS } from "@/components/todo/toolbar";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/messages";
-import { viewImpliedStatus, type Filters } from "@/lib/selectors";
+import {
+  dateFilterApplies,
+  viewImpliedStatus,
+  type Filters,
+} from "@/lib/selectors";
 import {
   PRIORITY_META,
   PRIORITY_ORDER,
+  type DateFilterKey,
   type SortKey,
   type StatusFilter,
 } from "@/lib/types";
@@ -44,6 +51,21 @@ const STATUS_OPTIONS: { value: StatusFilter; labelKey: MessageKey }[] = [
   { value: "all", labelKey: "toolbar.status.all" },
   { value: "active", labelKey: "toolbar.status.active" },
   { value: "completed", labelKey: "toolbar.status.completed" },
+];
+
+/** The 日期 submenu, in the same order the toolbar's chips run: 全部 first,
+    the named days, then the spans and the existence questions. */
+const DATE_OPTIONS: { value: DateFilterKey | null; labelKey: MessageKey }[] = [
+  { value: null, labelKey: "common.all" },
+  { value: "today", labelKey: "date.today" },
+  { value: "tomorrow", labelKey: "date.tomorrow" },
+  { value: "dayAfter", labelKey: "date.dayAfter" },
+  ...(
+    Object.keys(DATE_FILTER_LABEL_KEYS) as Exclude<
+      DateFilterKey,
+      "today" | "tomorrow" | "dayAfter"
+    >[]
+  ).map((key) => ({ value: key, labelKey: DATE_FILTER_LABEL_KEYS[key] })),
 ];
 
 /** A menu row whose right edge shows a check when it names the current value —
@@ -141,6 +163,27 @@ export function BlankAreaMenu({
 
         <ContextMenuSeparator />
 
+        {/* 排序 lives above the filters: it reshapes the whole list rather
+            than narrowing it, the one query row that answers nothing about
+            *which* tasks show — so it goes first and the narrowings follow. */}
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <Icon icon={ArrowDownWideNarrow} size="sm" />
+            {t("toolbar.sortPlaceholder")}
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            {(Object.keys(SORT_LABEL_KEYS) as SortKey[]).map((key) => (
+              <CheckedItem
+                key={key}
+                active={filters.sort === key}
+                onSelect={() => onChange({ sort: key })}
+              >
+                {t(SORT_LABEL_KEYS[key])}
+              </CheckedItem>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+
         {!statusLocked && (
           <ContextMenuSub>
             <ContextMenuSubTrigger>
@@ -190,6 +233,28 @@ export function BlankAreaMenu({
           </ContextMenuSubContent>
         </ContextMenuSub>
 
+        {/* 日期 mirrors the toolbar's 日期 chips — same options, same
+            order, same view gate: 今天 and 已逾期 already are date answers. */}
+        {dateFilterApplies(filters.view) && (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <Icon icon={CalendarDays} size="sm" />
+              {t("blank.filterDate")}
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {DATE_OPTIONS.map((option) => (
+                <CheckedItem
+                  key={String(option.value)}
+                  active={filters.dateFilter === option.value}
+                  onSelect={() => onChange({ dateFilter: option.value })}
+                >
+                  {t(option.labelKey)}
+                </CheckedItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        )}
+
         {tags.length > 0 && (
           <ContextMenuSub>
             <ContextMenuSubTrigger>
@@ -215,24 +280,6 @@ export function BlankAreaMenu({
             </ContextMenuSubContent>
           </ContextMenuSub>
         )}
-
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
-            <Icon icon={ArrowDownWideNarrow} size="sm" />
-            {t("toolbar.sortPlaceholder")}
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent>
-            {(Object.keys(SORT_LABEL_KEYS) as SortKey[]).map((key) => (
-              <CheckedItem
-                key={key}
-                active={filters.sort === key}
-                onSelect={() => onChange({ sort: key })}
-              >
-                {t(SORT_LABEL_KEYS[key])}
-              </CheckedItem>
-            ))}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
       </ContextMenuContent>
     </ContextMenu>
   );

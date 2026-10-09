@@ -1,7 +1,8 @@
-import { daysFromToday, isOverdue, todayISO } from "@/lib/date";
+import { daysFromToday, fromISODate, isOverdue, todayISO, toISODate, addDays } from "@/lib/date";
 import { LOCALES, translate, type Language } from "@/lib/messages";
 import {
   PRIORITY_META,
+  type DateFilterKey,
   type Priority,
   type SortKey,
   type StatusFilter,
@@ -18,6 +19,9 @@ export interface Filters {
   tag: string | null;
   query: string;
   sort: SortKey;
+  /** `null` = every date. Only consulted where the toolbar offers it —
+      今天 and 已逾期 are already date-shaped answers. */
+  dateFilter: DateFilterKey | null;
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -28,7 +32,59 @@ export const DEFAULT_FILTERS: Filters = {
   tag: null,
   query: "",
   sort: "due",
+  dateFilter: null,
 };
+
+/** The views whose answer is already a date: a 日期 chip there could only
+    fight the view's own promise. Everywhere else the chip is offered. */
+export function dateFilterApplies(view: ViewId): boolean {
+  return view !== "today" && view !== "overdue";
+}
+
+/** The ISO date span a named filter covers, `[start, end]` inclusive. Weeks
+    run Monday-first; months and years are the calendar's own. */
+function dateFilterRange(
+  key: Exclude<DateFilterKey, "withDate" | "noDate">,
+  today: string
+): { start: string; end: string } {
+  const now = fromISODate(today);
+  switch (key) {
+    case "today":
+      return { start: today, end: today };
+    case "tomorrow":
+      return { start: addDays(today, 1), end: addDays(today, 1) };
+    case "dayAfter":
+      return { start: addDays(today, 2), end: addDays(today, 2) };
+    case "thisWeek":
+    case "nextWeek": {
+      // Monday of this week — `(day + 6) % 7` days back from a Sunday-first
+      // `getDay()`.
+      const monday = addDays(today, -((now.getDay() + 6) % 7));
+      const start = key === "thisWeek" ? monday : addDays(monday, 7);
+      return { start, end: addDays(start, 6) };
+    }
+    case "thisMonth":
+    case "nextMonth": {
+      const y = key === "thisMonth" ? now.getFullYear() : now.getFullYear() + (now.getMonth() === 11 ? 1 : 0);
+      const m = key === "thisMonth" ? now.getMonth() : (now.getMonth() + 1) % 12;
+      const start = toISODate(new Date(y, m, 1));
+      const end = toISODate(new Date(y, m + 1, 0));
+      return { start, end };
+    }
+    case "thisYear": {
+      const y = now.getFullYear();
+      return { start: `${y}-01-01`, end: `${y}-12-31` };
+    }
+  }
+}
+
+function matchesDateFilter(todo: Todo, key: DateFilterKey, today: string): boolean {
+  if (key === "withDate") return todo.dueDate !== null;
+  if (key === "noDate") return todo.dueDate === null;
+  if (!todo.dueDate) return false;
+  const { start, end } = dateFilterRange(key, today);
+  return todo.dueDate >= start && todo.dueDate <= end;
+}
 
 const WEEK_AHEAD = 7;
 
@@ -38,7 +94,10 @@ function matchesView(todo: Todo, view: ViewId): boolean {
     case "all":
       return true;
     case "today":
-      return !todo.done && todo.dueDate === today;
+      // The whole day, not just the open work: what is done today sinks to
+      // the bottom of this view rather than vanishing from it — an accidental
+      // tick is undone in place, and the day keeps its receipts.
+      return todo.dueDate === today;
     case "upcoming": {
       if (todo.done || !todo.dueDate) return false;
       const diff = daysFromToday(todo.dueDate);
@@ -59,14 +118,14 @@ function matchesView(todo: Todo, view: ViewId): boolean {
  * The status a smart view is *already* restricted to, or `null` when the scope
  * can hold both finished and unfinished work.
  *
- * `matchesView` pins this down for four of the five views (今天 / 即将到期 /
- * 已逾期 / 已加星 all require `!todo.done`) and 已完成 requires `todo.done`. Only
- * `all` — with or without a list selected — can contain both, so a status filter
- * is only meaningful there. Anywhere else it is either a no-op (进行中) or
- * guarantees an empty list (已完成).
+ * `matchesView` pins this down for three of the five views (即将到期 / 已逾期 /
+ * 已加星 all require `!todo.done`) and 已完成 requires `todo.done`. 全部任务 and
+ * 今天 can hold both — 今天 on purpose: the finished day sinks to the bottom
+ * there rather than leaving the view — so a status filter is meaningful in
+ * exactly those two.
  */
 export function viewImpliedStatus(view: ViewId): StatusFilter | null {
-  if (view === "all") return null;
+  if (view === "all" || view === "today") return null;
   return view === "completed" ? "completed" : "active";
 }
 
@@ -118,6 +177,7 @@ export function selectTodos(
 ): Todo[] {
   const query = filters.query.trim().toLowerCase();
   const status = effectiveStatus(filters);
+  const today = todayISO();
 
   const filtered = todos.filter((todo) => {
     if (!matchesView(todo, filters.view)) return false;
@@ -128,6 +188,15 @@ export function selectTodos(
       return false;
     }
     if (filters.tag && !todo.tags.includes(filters.tag)) return false;
+    // The same guard the UI uses: in 今天 / 已逾期 a stale date range could
+    // only fight the view's own promise, so it is not consulted there.
+    if (
+      filters.dateFilter &&
+      dateFilterApplies(filters.view) &&
+      !matchesDateFilter(todo, filters.dateFilter, today)
+    ) {
+      return false;
+    }
     if (query) {
       const haystack = [
         todo.title,
@@ -197,9 +266,12 @@ export function computeStats(todos: Todo[]): TodoStats {
 }
 
 export function viewCounts(todos: Todo[]): Record<ViewId, number> {
+  const today = todayISO();
   return {
     all: todos.filter((t) => !t.done).length,
-    today: todos.filter((t) => matchesView(t, "today")).length,
+    // The badge is a workload, not a history count: what is already done
+    // today stays in the view but stays out of this number.
+    today: todos.filter((t) => !t.done && t.dueDate === today).length,
     upcoming: todos.filter((t) => matchesView(t, "upcoming")).length,
     overdue: todos.filter((t) => matchesView(t, "overdue")).length,
     starred: todos.filter((t) => matchesView(t, "starred")).length,
@@ -222,7 +294,9 @@ export function collectTags(todos: Todo[], lang: Language): string[] {
   return [...tags].sort((a, b) => a.localeCompare(b, LOCALES[lang]));
 }
 
-/** Groups tasks into 逾期 / 今天 / 明天 / 本周 / 以后 / 无日期 buckets. */
+/** Groups tasks into 历史 / 逾期 / 今天 / 明天 / 本周 / 以后 / 无日期 buckets.
+    历史 holds the finished past — kept apart from 逾期, which is a work
+    list, not an archive. */
 export interface TodoGroup {
   key: string;
   label: string;
@@ -231,6 +305,7 @@ export interface TodoGroup {
 
 export function groupByDue(todos: Todo[], lang: Language): TodoGroup[] {
   const buckets: TodoGroup[] = [
+    { key: "history", label: translate(lang, "group.history"), todos: [] },
     { key: "overdue", label: translate(lang, "group.overdue"), todos: [] },
     { key: "today", label: translate(lang, "group.today"), todos: [] },
     { key: "tomorrow", label: translate(lang, "group.tomorrow"), todos: [] },
@@ -248,8 +323,13 @@ export function groupByDue(todos: Todo[], lang: Language): TodoGroup[] {
       continue;
     }
     const diff = daysFromToday(todo.dueDate);
-    if (!todo.done && diff < 0) index.overdue.todos.push(todo);
-    else if (diff <= 0) index.today.todos.push(todo);
+    // The past is the past whatever the checkbox says — but where it lands
+    // depends on it: a finished task dated yesterday is history, an
+    // unfinished one is overdue work. "Today" must mean *this day*, not
+    // "any day up to now".
+    if (diff < 0) {
+      (todo.done ? index.history : index.overdue).todos.push(todo);
+    } else if (diff === 0) index.today.todos.push(todo);
     else if (diff === 1) index.tomorrow.todos.push(todo);
     else if (diff <= 7) index.week.todos.push(todo);
     else index.later.todos.push(todo);

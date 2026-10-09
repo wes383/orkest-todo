@@ -17,13 +17,31 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, MOD_KEY } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/messages";
-import { viewImpliedStatus, type Filters } from "@/lib/selectors";
+import { viewImpliedStatus, dateFilterApplies, type Filters } from "@/lib/selectors";
 import {
   PRIORITY_META,
   PRIORITY_ORDER,
+  type DateFilterKey,
   type SortKey,
   type StatusFilter,
 } from "@/lib/types";
+
+/** Keyed by `DateFilterKey` so the 日期 chips iterate like the sort menu —
+    declaration order is chip order. The single-day options reuse the date
+    vocabulary the due chips already speak. Exported for the blank-area
+    menu's 日期 submenu, which shares both the keys and the order. */
+export const DATE_FILTER_LABEL_KEYS: Record<
+  Exclude<DateFilterKey, "today" | "tomorrow" | "dayAfter">,
+  MessageKey
+> = {
+  thisWeek: "filter.date.thisWeek",
+  nextWeek: "filter.date.nextWeek",
+  thisMonth: "filter.date.thisMonth",
+  nextMonth: "filter.date.nextMonth",
+  thisYear: "filter.date.thisYear",
+  withDate: "filter.date.withDate",
+  noDate: "filter.date.noDate",
+};
 
 /**
  * Keyed by `SortKey` so the menu can be built by iterating the keys of this
@@ -142,24 +160,28 @@ export function Toolbar({
 }: ToolbarProps) {
   const { t } = useI18n();
 
-  /** Only the two controls inside the popover — the trigger's badge reflects it. */
+  /** Only the controls inside the popover — the trigger's badge reflects it. */
   const narrowingCount =
-    (filters.priority !== "all" ? 1 : 0) + (filters.tag ? 1 : 0);
+    (filters.priority !== "all" ? 1 : 0) +
+    (filters.tag ? 1 : 0) +
+    (filters.dateFilter ? 1 : 0);
 
   /** True when the active view already decides the status for us. */
   const statusLocked = viewImpliedStatus(filters.view) !== null;
 
+  /** 今天 / 已逾期 already are date answers; everywhere else the 日期
+      chips are worth their row. */
+  const showDateFilter = dateFilterApplies(filters.view);
+
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {/*
-       * The status segmented control is only rendered in 全部任务.
-       *
-       * `matchesView` already pins the status in every other view — 今天 /
-       * 即将到期 / 已逾期 / 已加星 require `!todo.done`, 已完成 requires
-       * `todo.done` — so a status filter there can only do one of two useless
-       * things: 进行中 changes nothing, 已完成 guarantees an empty list. Showing
-       * a control whose every option is a no-op (or a trap) is worse than not
-       * showing it, and the freed 200px goes to the search field.
+       * The status segmented control is only rendered where a status filter
+       * can actually do something: 全部任务 and 今天 — the two views whose
+       * scope holds finished and unfinished work alike (今天 keeps the
+       * finished day, sunken) — and nowhere else. 即将到期 / 已逾期 / 已加星
+       * already pin `!todo.done` and 已完成 pins `todo.done`, so a control
+       * there could only offer no-ops or an empty list.
        *
        * `selectTodos` enforces the same rule on the data side, so the hidden
        * control can never leave a stale value quietly emptying the list.
@@ -284,6 +306,72 @@ export function Toolbar({
               ))}
             </div>
           </div>
+
+          {showDateFilter && (
+            <div className="flex flex-col gap-1.5">
+              <SubsectionLabel className="text-xs text-foreground-subtle">
+                {t("common.date")}
+              </SubsectionLabel>
+              <div className="flex flex-wrap gap-1.5">
+                <FilterChip
+                  active={filters.dateFilter === null}
+                  onClick={() => onChange({ dateFilter: null })}
+                >
+                  {t("common.all")}
+                </FilterChip>
+                <FilterChip
+                  active={filters.dateFilter === "today"}
+                  onClick={() =>
+                    onChange({
+                      dateFilter: filters.dateFilter === "today" ? null : "today",
+                    })
+                  }
+                >
+                  {t("date.today")}
+                </FilterChip>
+                <FilterChip
+                  active={filters.dateFilter === "tomorrow"}
+                  onClick={() =>
+                    onChange({
+                      dateFilter:
+                        filters.dateFilter === "tomorrow" ? null : "tomorrow",
+                    })
+                  }
+                >
+                  {t("date.tomorrow")}
+                </FilterChip>
+                <FilterChip
+                  active={filters.dateFilter === "dayAfter"}
+                  onClick={() =>
+                    onChange({
+                      dateFilter:
+                        filters.dateFilter === "dayAfter" ? null : "dayAfter",
+                    })
+                  }
+                >
+                  {t("date.dayAfter")}
+                </FilterChip>
+                {(
+                  Object.keys(DATE_FILTER_LABEL_KEYS) as Exclude<
+                    DateFilterKey,
+                    "today" | "tomorrow" | "dayAfter"
+                  >[]
+                ).map((key) => (
+                  <FilterChip
+                    key={key}
+                    active={filters.dateFilter === key}
+                    onClick={() =>
+                      onChange({
+                        dateFilter: filters.dateFilter === key ? null : key,
+                      })
+                    }
+                  >
+                    {t(DATE_FILTER_LABEL_KEYS[key])}
+                  </FilterChip>
+                ))}
+              </div>
+            </div>
+          )}
 
           {tags.length > 0 && (
             <div className="flex flex-col gap-1.5">

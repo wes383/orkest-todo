@@ -465,10 +465,19 @@ function TaskCard({
   );
 }
 
-/** A day's chips: the unfinished first, then by priority, then by age — the
-    order the task list's own sort would give them. */
+/** A day's chips: the unfinished first; then, before priority even gets a
+    vote, the timed ones in the order their hours arrive — the way a day
+    reads as a schedule; the untimed after them, by priority, then by age —
+    the order the task list's own sort would give them. */
 function sortForDay(a: Todo, b: Todo): number {
   if (a.done !== b.done) return a.done ? 1 : -1;
+  // `HH:MM` strings order as their clock times do; `null` (all-day) loses
+  // to any hour, so timed tasks gather at the top of the day.
+  if (a.dueTime !== b.dueTime) {
+    if (a.dueTime === null) return 1;
+    if (b.dueTime === null) return -1;
+    return a.dueTime < b.dueTime ? -1 : 1;
+  }
   const rank = PRIORITY_META[a.priority].rank - PRIORITY_META[b.priority].rank;
   if (rank !== 0) return rank;
   return a.createdAt - b.createdAt;

@@ -333,10 +333,11 @@ export default function App() {
     : t(VIEW_TITLE_KEYS[filters.view]);
 
   /**
-   * A status filter only narrows anything in the 全部任务 scope. Every other view
-   * already pins the status — four of them show unfinished work only, 已完成
-   * shows finished work only — so counting it here would advertise a filter that
-   * cannot change the list, and the control itself is hidden down in the toolbar.
+   * A status filter only narrows anything in the 全部任务 / 今天 scopes — the
+   * two that hold finished and unfinished work alike. Every other view already
+   * pins the status (three show unfinished work only, 已完成 finished only), so
+   * counting it there would advertise a filter that cannot change the list,
+   * and the control itself is hidden down in the toolbar.
    */
   const statusApplies = viewImpliedStatus(filters.view) === null;
 
@@ -344,6 +345,7 @@ export default function App() {
     (filters.priority !== "all" ? 1 : 0) +
     (filters.tag ? 1 : 0) +
     (filters.query.trim() ? 1 : 0) +
+    (filters.dateFilter ? 1 : 0) +
     (statusApplies && filters.status !== "all" ? 1 : 0);
 
   /**

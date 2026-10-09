@@ -215,6 +215,24 @@ export type Screen =
 export type StatusFilter = "all" | "active" | "completed";
 export type SortKey = "due" | "priority" | "created" | "title";
 
+/**
+ * The named date ranges the toolbar's 日期 chips select. Calendar spans
+ * (week runs Monday-first, the way every other calendar-shaped thing in the
+ * app reads) plus the two existence questions — a task with any date at all,
+ * or none. `Filters.dateFilter` holds `null` when no range is picked.
+ */
+export type DateFilterKey =
+  | "today"
+  | "tomorrow"
+  | "dayAfter"
+  | "thisWeek"
+  | "nextWeek"
+  | "thisMonth"
+  | "nextMonth"
+  | "thisYear"
+  | "withDate"
+  | "noDate";
+
 export interface PriorityMeta {
   /**
    * Message keys, not strings. A priority is named in the filter chips, the
