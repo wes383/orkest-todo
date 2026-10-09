@@ -18,7 +18,7 @@ import {
   type FocusSpan,
 } from "@/lib/focus-spans";
 import { firstDayOfWeek, type FirstDayOfWeek } from "@/lib/settings";
-import type { Todo, TodoList } from "@/lib/types";
+import type { Priority, Todo, TodoList } from "@/lib/types";
 
 export interface TaskStats {
   todayDone: number;
@@ -33,6 +33,21 @@ export interface TaskStats {
   currentStreak: number;
   /** Completions per local midnight, days ascending, days with none left out. */
   daily: { day: number; count: number }[];
+  /** Creations per local midnight — the backlog chart's other line. */
+  createdDaily: { day: number; count: number }[];
+  /** Completions per weekday, indexed in the week's own order (first day
+      first), so the chart's columns read the way the week runs. */
+  weekday: number[];
+  /** Done tasks that carried a due date: finished on or before it, vs after. */
+  onTimeCount: number;
+  lateCount: number;
+  /** Mean span from creation to completion, in days over the done tasks that
+      know both ends; `null` until something has been finished. */
+  avgDays: number | null;
+  /** Done tasks finished the very day they were created. */
+  sameDayCount: number;
+  /** Completions per priority — the "what mattered" split. */
+  priorityDone: Record<Priority, number>;
 }
 
 export function taskStats(
@@ -41,16 +56,59 @@ export function taskStats(
   firstDay: FirstDayOfWeek = firstDayOfWeek()
 ): TaskStats {
   const perDay = new Map<number, number>();
+  const perCreatedDay = new Map<number, number>();
+  const weekday = new Array<number>(7).fill(0);
+  const priorityDone: Record<Priority, number> = {
+    urgent: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+  };
   let totalDone = 0;
+  let onTimeCount = 0;
+  let lateCount = 0;
+  let sameDayCount = 0;
+  let spanMsTotal = 0;
+  const weekStartDow = firstDay === "sunday" ? 0 : 1;
 
+  // Creations are counted for every task; the completion figures below only
+  // have a use for the ones that actually finished.
   for (const todo of todos) {
+    const created = startOfDay(todo.createdAt);
+    perCreatedDay.set(created, (perCreatedDay.get(created) ?? 0) + 1);
+
     if (!todo.done || todo.completedAt === null) continue;
     totalDone += 1;
     const day = startOfDay(todo.completedAt);
     perDay.set(day, (perDay.get(day) ?? 0) + 1);
+
+    // Weekday bucketed in the week's own order — `(dow - start + 7) % 7`
+    // rotates either convention into "first day first".
+    const dow = new Date(day).getDay();
+    weekday[(dow - weekStartDow + 7) % 7] += 1;
+
+    priorityDone[todo.priority] += 1;
+
+    // Deadline keeping, at day grain: an all-day task due the 10th counts as
+    // kept when it finished on the 10th, late from the 11th on.
+    if (todo.dueDate !== null) {
+      const d = new Date(todo.completedAt);
+      const doneISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (doneISO > todo.dueDate) lateCount += 1;
+      else onTimeCount += 1;
+    }
+
+    const span = todo.completedAt - todo.createdAt;
+    if (span >= 0) {
+      spanMsTotal += span;
+      if (startOfDay(todo.createdAt) === day) sameDayCount += 1;
+    }
   }
 
   const daily = [...perDay.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([day, count]) => ({ day, count }));
+  const createdDaily = [...perCreatedDay.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([day, count]) => ({ day, count }));
 
@@ -110,7 +168,38 @@ export function taskStats(
     longestStreak,
     currentStreak,
     daily,
+    createdDaily,
+    weekday,
+    onTimeCount,
+    lateCount,
+    avgDays:
+      totalDone > 0
+        ? Math.round((spanMsTotal / totalDone / 86_400_000) * 10) / 10
+        : null,
+    sameDayCount,
+    priorityDone,
   };
+}
+
+/** Per-tag completions, busiest first. A tag is one row however many tasks
+    wear it; the rate underneath reads against every task carrying it. */
+export function taskTagBreakdown(todos: Todo[]) {
+  const map = new Map<string, { done: number; total: number }>();
+  for (const todo of todos) {
+    for (const tag of todo.tags) {
+      const row = map.get(tag) ?? { done: 0, total: 0 };
+      row.total += 1;
+      if (todo.done) row.done += 1;
+      map.set(tag, row);
+    }
+  }
+  return [...map.entries()]
+    .map(([tag, row]) => ({ tag, ...row }))
+    .filter((row) => row.total > 0)
+    .sort(
+      (a, b) =>
+        b.done - a.done || b.total - a.total || a.tag.localeCompare(b.tag)
+    );
 }
 
 /** Per-list completion, in the sidebar's list order. Lists with no tasks at

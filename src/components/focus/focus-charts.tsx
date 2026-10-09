@@ -190,14 +190,21 @@ function useTip() {
   };
 
   /** `y` moves the pill off the anchor's top edge, for a chart whose label
-      belongs beside a point rather than above the column that holds it. */
+      belongs beside a point rather than above the column that holds it.
+      `fixedAt` skips the anchor arithmetic entirely and pins the pill to the
+      pointer itself — what a shape whose bounding box is bigger than the
+      thing being touched (a ring's circle spans the whole chart) needs. */
   const enter = (
-    event: ReactPointerEvent<HTMLElement>,
+    event: ReactPointerEvent<Element>,
     text: string,
-    y?: number
+    y?: number,
+    fixedAt?: { x: number; y: number }
   ) => {
     const box = event.currentTarget.getBoundingClientRect();
-    const at = { x: box.left + box.width / 2, y: y ?? box.top };
+    const at = fixedAt ?? {
+      x: box.left + box.width / 2,
+      y: y ?? box.top,
+    };
     if (wait.current !== null) {
       window.clearTimeout(wait.current);
       wait.current = null;
@@ -324,6 +331,221 @@ export function Line({
           ))}
         </div>
       ) : null}
+      {tip === null ? null : <BarTip text={tip.text} at={tip.at} />}
+    </div>
+  );
+}
+
+/**
+ * Categories as columns: one column a weekday, a priority, a week — each
+ * standing on one bar (a single series) or two side by side (created vs
+ * completed). The column, not the bar, answers to the pointer, so a grouped
+ * column speaks both of its numbers in one breath.
+ */
+export function Bars({
+  columns,
+}: {
+  columns: {
+    /** The axis label under the column. */
+    label: string;
+    /** The words the tooltip shows for the whole column. */
+    tooltip: string;
+    /** One or two bars; the height is each value's share of the tallest. */
+    bars: { value: number; className: string }[];
+  }[];
+}) {
+  const { tip, enter, leave } = useTip();
+  const tallest = Math.max(
+    ...columns.flatMap((col) => col.bars.map((bar) => bar.value)),
+    1
+  );
+
+  return (
+    <div>
+      <div
+        className="flex h-28 items-end gap-1.5 border-b border-border"
+        onPointerLeave={leave}
+      >
+        {columns.map((col, index) => (
+          <div
+            key={index}
+            role={col.tooltip ? "img" : undefined}
+            aria-label={col.tooltip || undefined}
+            onPointerEnter={
+              col.tooltip ? (event) => enter(event, col.tooltip) : undefined
+            }
+            className="flex h-full flex-1 cursor-pointer items-end justify-center gap-[3px]"
+          >
+            {col.bars.map((bar, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                className={cn("rounded-t-[3px]", bar.className)}
+                style={{
+                  // A share of the column's width — one bar stands wider
+                  // than a pair, so a single series still reads as a column
+                  // rather than a thin post.
+                  width: col.bars.length > 1 ? "42%" : "58%",
+                  height:
+                    bar.value > 0
+                      ? `${Math.max((bar.value / tallest) * 100, 3)}%`
+                      : 0,
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 flex gap-1.5">
+        {columns.map((col, index) => (
+          <span
+            key={index}
+            className="flex-1 truncate text-center text-xs leading-none text-foreground-faint"
+          >
+            {col.label}
+          </span>
+        ))}
+      </div>
+      {tip === null ? null : <BarTip text={tip.text} at={tip.at} />}
+    </div>
+  );
+}
+
+/** The four steps of the useful ramp, as legend dots (a class) and ring
+    strokes (a color) — the same shades the heat grids read, so a priority
+    ring borrows an existing vocabulary instead of inventing one. */
+export const RAMP_STEPS = [
+  {
+    dot: "bg-[color-mix(in_srgb,var(--focus-useful)_22%,transparent)]",
+    stroke: "color-mix(in srgb, var(--focus-useful) 22%, transparent)",
+  },
+  {
+    dot: "bg-[color-mix(in_srgb,var(--focus-useful)_45%,transparent)]",
+    stroke: "color-mix(in srgb, var(--focus-useful) 45%, transparent)",
+  },
+  {
+    dot: "bg-[color-mix(in_srgb,var(--focus-useful)_70%,transparent)]",
+    stroke: "color-mix(in srgb, var(--focus-useful) 70%, transparent)",
+  },
+  { dot: "bg-focus-useful", stroke: "var(--focus-useful)" },
+];
+
+/**
+ * Composition as a ring: one slice a share of the whole, the total standing
+ * in the hole. Bars compare magnitudes; a ring answers the narrower question
+ * "of everything finished, how much was this?" — which is the one a fixed
+ * handful of categories actually asks. The legend beside it carries the
+ * counts the ring itself deliberately does not.
+ */
+export function Donut({
+  slices,
+  centerValue,
+  centerLabel,
+}: {
+  slices: {
+    value: number;
+    /** The legend's word for the slice. */
+    label: string;
+    tooltip: string;
+    /** Legend dot class, from `RAMP_STEPS` or the like. */
+    dot: string;
+    /** Ring stroke color for the slice. */
+    stroke: string;
+  }[];
+  centerValue: string;
+  centerLabel: string;
+}) {
+  const { tip, enter, leave } = useTip();
+  const total = slices.reduce((acc, slice) => acc + slice.value, 0);
+
+  // Dash geometry on a circle whose circumference is exactly 100: a slice's
+  // dash is its share, and each starts where the last one ended. Radius
+  // 15.9155 is the one that makes the circumference come out at 100.
+  let walked = 0;
+  const rings = slices
+    .filter((slice) => slice.value > 0)
+    .map((slice) => {
+      const pct = (slice.value / total) * 100;
+      const ring = { ...slice, pct, offset: -walked };
+      walked += pct;
+      return ring;
+    });
+
+  return (
+    <div className="flex items-center justify-between gap-5">
+      <div className="relative h-32 w-32 shrink-0" onPointerLeave={leave}>
+        <svg
+          viewBox="0 0 42 42"
+          aria-hidden="true"
+          className="h-full w-full -rotate-90"
+        >
+          {/* The track the slices are read against — what an empty priority
+              would sit on if a slice of zero were worth drawing. */}
+          <circle
+            cx="21"
+            cy="21"
+            r={15.9155}
+            fill="none"
+            strokeWidth={5}
+            className="stroke-muted"
+          />
+          {rings.map((ring, index) => (
+            <circle
+              key={index}
+              cx="21"
+              cy="21"
+              r={15.9155}
+              fill="none"
+              strokeWidth={6}
+              strokeDasharray={`${ring.pct} ${100 - ring.pct}`}
+              strokeDashoffset={ring.offset}
+              style={{ stroke: ring.stroke }}
+              className="cursor-pointer"
+              // Pinned to the pointer: a circle's bounding box covers the
+              // whole ring, so anchoring to the box would hang the pill over
+              // the chart however it was placed.
+              onPointerEnter={(event) =>
+                enter(event, ring.tooltip, undefined, {
+                  x: event.clientX,
+                  y: event.clientY,
+                })
+              }
+            />
+          ))}
+        </svg>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="font-display text-xl font-semibold leading-none tabular-nums text-foreground">
+            {centerValue}
+          </span>
+          <span className="mt-1 text-xs leading-none text-foreground-faint">
+            {centerLabel}
+          </span>
+        </div>
+      </div>
+      <ul className="flex w-28 shrink-0 flex-col gap-2">
+        {slices.map((slice) => (
+          <li
+            key={slice.label}
+            className="flex items-center justify-between gap-2 text-sm"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span
+                aria-hidden="true"
+                className={cn("h-2.5 w-2.5 shrink-0 rounded-[3px]", slice.dot)}
+              />
+              <span className="truncate text-foreground-muted">
+                {slice.label}
+              </span>
+            </span>
+            <span className="shrink-0 tabular-nums text-foreground-faint">
+              {slice.value}
+              {total > 0 && slice.value > 0
+                ? ` · ${Math.round((slice.value / total) * 100)}%`
+                : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
       {tip === null ? null : <BarTip text={tip.text} at={tip.at} />}
     </div>
   );

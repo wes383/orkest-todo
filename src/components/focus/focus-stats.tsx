@@ -49,7 +49,16 @@ import {
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
 import { TimePicker } from "@/components/ui/time-picker";
-import { Card, Heat, Line, Metric, YearHeat } from "@/components/focus/focus-charts";
+import {
+  Bars,
+  Card,
+  Donut,
+  Heat,
+  Line,
+  Metric,
+  RAMP_STEPS,
+  YearHeat,
+} from "@/components/focus/focus-charts";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   SCOPE_ALL,
@@ -90,6 +99,7 @@ import { useI18n } from "@/lib/i18n";
 import {
   taskListBreakdown,
   taskStats,
+  taskTagBreakdown,
 } from "@/lib/task-stats";
 import { spanLimits } from "@/lib/settings";
 import type { FirstDayOfWeek } from "@/lib/settings";
@@ -232,7 +242,12 @@ export function FocusStats({
   const [tab, setTab] = useState<"focus" | "tasks">("focus");
   /** The task tab's own list filter — separate from the focus scope on
       purpose: a pick on one tab must not silently reshape the other. */
-  const [taskScope, setTaskScope] = useState<string>("all");
+  /** The task tab's filter. Two "all" readings bracket the per-list picks:
+      one counts every list including the archived, one counts only the live
+      ones. It opens on the live-only reading — archived work is retired, and
+      a statistic that quietly carries it misstates what is still owed —
+      while the inclusive reading keeps the full history one click away. */
+  const [taskScope, setTaskScope] = useState<string>("allActive");
   /** Which slice of the log every reading on this sheet is about. */
   const [scope, setScope] = useState<Scope>(SCOPE_ALL);
   /** Which day the stretch list is showing, as a local midnight. `null` means
@@ -485,19 +500,27 @@ export function FocusStats({
   const fullestList = Math.max(...listTotals.map((total) => total.useful), 1);
 
   /** The task tab's filter, kept honest: a pick pointing at a list that has
-      since been deleted falls back to every list, which is the reading that
-      is still true. */
+      since been deleted falls back to the default reading, which is the one
+      that is still true. */
   const effectiveTaskScope =
-    taskScope === "all" || lists.some((list) => list.id === taskScope)
+    taskScope === "all" ||
+    taskScope === "allActive" ||
+    lists.some((list) => list.id === taskScope)
       ? taskScope
-      : "all";
+      : "allActive";
 
   /** The todos cut down to the task tab's own filter — separate from the
       focus scope above, so a pick on one tab never reshapes the other. */
   const scopedTodos = useMemo(() => {
+    if (effectiveTaskScope === "allActive") {
+      const live = new Set(
+        lists.filter((list) => list.archivedAt === null).map((list) => list.id)
+      );
+      return todos.filter((todo) => live.has(todo.listId));
+    }
     if (effectiveTaskScope === "all") return todos;
     return todos.filter((todo) => todo.listId === effectiveTaskScope);
-  }, [todos, effectiveTaskScope]);
+  }, [todos, lists, effectiveTaskScope]);
 
   /** The task-side figures, over the filtered todo set. */
   const tasks = useMemo(
@@ -737,6 +760,96 @@ export function FocusStats({
     });
   }, [figures, tasks]);
 
+  /** The weekday names in the week's own order — the same rotation the heat
+      grids use, so the columns answer to the setting as well. */
+  const weekdayLabels = useMemo(() => {
+    const format = new Intl.DateTimeFormat(LOCALES[language], {
+      weekday: "short",
+    });
+    // 2024-01-01 was a Monday: `byGetDay[i]` names the weekday with
+    // `getDay() === (i + 1) % 7`, and a Sunday-first week reads the same
+    // seven names starting from the back.
+    const byGetDay = Array.from({ length: 7 }, (_, index) =>
+      format.format(new Date(2024, 0, 1 + index))
+    );
+    return firstDay === "sunday"
+      ? [byGetDay[6], ...byGetDay.slice(0, 6)]
+      : byGetDay;
+  }, [language, firstDay]);
+
+  /** The weekday columns the "when" chart draws — `taskStats` already filed
+      each completion under the week's own order. */
+  const weekdayColumns = useMemo(() => {
+    if (tasks === null) return [];
+    return tasks.weekday.map((count, index) => ({
+      label: weekdayLabels[index],
+      tooltip: `${weekdayLabels[index]} · ${t("stats.tasks.count", { n: count })}`,
+      bars: [{ value: count, className: "bg-focus-useful" }],
+    }));
+  }, [tasks, weekdayLabels, t]);
+
+  const priorityKeys = ["urgent", "high", "medium", "low"] as const;
+  const prioritySlices = useMemo(() => {
+    if (tasks === null) return [];
+    return priorityKeys.map((key, index) => ({
+      value: tasks.priorityDone[key],
+      label: t(`priority.${key}.short`),
+      tooltip: `${t(`priority.${key}`)} · ${t("stats.tasks.count", {
+        n: tasks.priorityDone[key],
+      })}`,
+      dot: RAMP_STEPS[index].dot,
+      stroke: RAMP_STEPS[index].stroke,
+    }));
+  }, [tasks, t]);
+
+  /** The last eight weeks, created against completed — the backlog chart's
+      columns. Weeks run on the week-start setting, current week included
+      even though it is still being written. */
+  const BACKLOG_WEEKS = 8;
+  const backlogColumns = useMemo(() => {
+    if (tasks === null || now === null) return [];
+    const thisWeek = startOfWeek(now, firstDay);
+    return Array.from({ length: BACKLOG_WEEKS }, (_, index) => {
+      const from = shiftDays(thisWeek, -7 * (BACKLOG_WEEKS - 1 - index));
+      const to = shiftDays(from, 7);
+      const sum = (rows: { day: number; count: number }[]) =>
+        rows.reduce(
+          (acc, { day, count }) => (day >= from && day < to ? acc + count : acc),
+          0
+        );
+      const created = sum(tasks.createdDaily);
+      const done = sum(tasks.daily);
+      return {
+        label: dayTick(from),
+        tooltip: `${dateRange(from, shiftDays(to, -1), language)} · ${t(
+          "stats.tasks.backlog.created"
+        )} ${created} · ${t("stats.tasks.backlog.done")} ${done}`,
+        bars: [
+          { value: created, className: "bg-focus-idle" },
+          { value: done, className: "bg-focus-useful" },
+        ],
+      };
+    });
+  }, [tasks, now, firstDay, language, t, dayTick]);
+
+  /** The deadline-keeping figures: of the done tasks that carried a due
+      date, how many were finished by it. Day grain — an all-day task counts
+      as kept on its own day. */
+  const deadlineDone = tasks === null ? 0 : tasks.onTimeCount + tasks.lateCount;
+  const onTimeRate =
+    tasks === null || deadlineDone === 0
+      ? null
+      : Math.round((tasks.onTimeCount / deadlineDone) * 100);
+
+  /** The span figures: how long a task lives from creation to completion,
+      and how often it dies the same day it is born. */
+  const sameDayRate =
+    tasks === null || tasks.totalDone === 0
+      ? null
+      : Math.round((tasks.sameDayCount / tasks.totalDone) * 100);
+
+  const tagRows = useMemo(() => taskTagBreakdown(scopedTodos), [scopedTodos]);
+
   /*
    * The scope picker's menu. Active lists sit at the top level; archived ones
    * fold into a submenu — still selectable (history does not vanish when a
@@ -893,6 +1006,9 @@ export function FocusStats({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="allActive">
+                  {t("stats.tasks.scopeAllActive")}
+                </SelectItem>
                 <SelectItem value="all">
                   {t("stats.tasks.scopeAll")}
                 </SelectItem>
@@ -1554,6 +1670,52 @@ export function FocusStats({
                         />
                       </div>
                     </Card>
+
+                    <Card
+                      title={t("stats.tasks.when")}
+                      hint={t("focus.log.allHistory")}
+                    >
+                      <Bars columns={weekdayColumns} />
+                    </Card>
+
+                    <Card
+                      title={t("stats.tasks.backlog")}
+                      hint={t("stats.tasks.backlog.weeks", { n: BACKLOG_WEEKS })}
+                    >
+                      <Bars columns={backlogColumns} />
+                      <div className="mt-2.5 flex items-center gap-4 text-xs leading-none text-foreground-faint">
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            aria-hidden="true"
+                            className="h-2 w-2 rounded-[3px] bg-focus-idle"
+                          />
+                          {t("stats.tasks.backlog.created")}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            aria-hidden="true"
+                            className="h-2 w-2 rounded-[3px] bg-focus-useful"
+                          />
+                          {t("stats.tasks.backlog.done")}
+                        </span>
+                      </div>
+                    </Card>
+
+                    <Card title={t("stats.tasks.byPriority")}>
+                      {tasks === null || tasks.totalDone === 0 ? (
+                        <p className="text-sm text-foreground-muted">
+                          {t("stats.tasks.empty")}
+                        </p>
+                      ) : (
+                        <Donut
+                          slices={prioritySlices}
+                          centerValue={t("stats.tasks.count", {
+                            n: tasks.totalDone,
+                          })}
+                          centerLabel={t("stats.tasks.backlog.done")}
+                        />
+                      )}
+                    </Card>
                   </div>
 
                   <div className="flex flex-col gap-4 xl:col-span-6">
@@ -1587,6 +1749,115 @@ export function FocusStats({
                                   style={{
                                     width: `${Math.max(2, row.rate * 100)}%`,
                                     backgroundColor: colorOf(row.listId),
+                                  }}
+                                />
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </Card>
+
+                    <Card
+                      title={t("stats.tasks.onTime")}
+                      hint={t("stats.tasks.onTime.hint")}
+                    >
+                      {tasks === null || deadlineDone === 0 ? (
+                        <p className="text-sm text-foreground-muted">
+                          {t("stats.tasks.empty")}
+                        </p>
+                      ) : (
+                        <dl className="text-sm">
+                          <div className="flex items-baseline justify-between gap-3 border-b border-border pb-3">
+                            <dt className="text-foreground-muted">
+                              {t("stats.tasks.onTime.rate")}
+                            </dt>
+                            <dd className="font-display text-lg font-semibold tabular-nums text-foreground">
+                              {t("stats.tasks.pct", { pct: onTimeRate ?? 0 })}
+                            </dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3 border-b border-border py-3">
+                            <dt className="text-foreground-muted">
+                              {t("stats.tasks.backlog.done")}
+                            </dt>
+                            <dd className="tabular-nums text-foreground">
+                              {t("stats.tasks.count", {
+                                n: tasks.onTimeCount,
+                              })}
+                            </dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3 pt-3">
+                            <dt className="text-foreground-muted">
+                              {t("stats.tasks.onTime.late")}
+                            </dt>
+                            <dd className="tabular-nums text-foreground">
+                              {t("stats.tasks.count", { n: tasks.lateCount })}
+                            </dd>
+                          </div>
+                        </dl>
+                      )}
+                    </Card>
+
+                    <Card title={t("stats.tasks.timing")}>
+                      {tasks === null || tasks.totalDone === 0 ? (
+                        <p className="text-sm text-foreground-muted">
+                          {t("stats.tasks.empty")}
+                        </p>
+                      ) : (
+                        <dl className="text-sm">
+                          <div className="flex items-baseline justify-between gap-3 border-b border-border pb-3">
+                            <dt className="text-foreground-muted">
+                              {t("stats.tasks.timing.avg")}
+                            </dt>
+                            <dd className="font-display text-lg font-semibold tabular-nums text-foreground">
+                              {t("stats.focus.streakDays", {
+                                n: tasks.avgDays ?? 0,
+                              })}
+                            </dd>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3 pt-3">
+                            <dt className="text-foreground-muted">
+                              {t("stats.tasks.timing.sameDay")}
+                            </dt>
+                            <dd className="tabular-nums text-foreground">
+                              {t("stats.tasks.pct", { pct: sameDayRate ?? 0 })}
+                            </dd>
+                          </div>
+                        </dl>
+                      )}
+                    </Card>
+
+                    <Card title={t("stats.tasks.byTag")}>
+                      {tagRows.length === 0 ? (
+                        <p className="text-sm text-foreground-muted">
+                          {t("stats.tasks.empty")}
+                        </p>
+                      ) : (
+                        <ul className="flex flex-col gap-2.5">
+                          {tagRows.map((row) => (
+                            <li key={row.tag}>
+                              <div className="flex items-baseline justify-between gap-3 text-sm">
+                                <span className="truncate text-foreground">
+                                  {row.tag}
+                                </span>
+                                <span className="shrink-0 tabular-nums text-foreground-muted">
+                                  {t("stats.tasks.ofCount", {
+                                    done: row.done,
+                                    total: row.total,
+                                  })}
+                                  {" · "}
+                                  {t("stats.tasks.pct", {
+                                    pct: Math.round(
+                                      (row.done / row.total) * 100
+                                    ),
+                                  })}
+                                </span>
+                              </div>
+                              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                <span
+                                  className="block h-full rounded-full bg-focus-useful"
+                                  style={{
+                                    width: `${Math.max(2, (row.done / row.total) * 100)}%`,
                                   }}
                                 />
                               </div>
