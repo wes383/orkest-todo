@@ -1201,7 +1201,7 @@ export default function App() {
         {screen === "calendar" ? (
           <Suspense fallback={<main className="h-full min-w-0 flex-1 bg-background" />}>
             <CalendarView
-              todos={todos}
+              todos={activeTodos}
               lists={lists}
               onEdit={openEdit}
               onCreateFor={openCreateFor}

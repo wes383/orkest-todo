@@ -86,6 +86,10 @@ const zh = {
   /* ── Calendar screen ─────────────────────────────────────── */
   "calendar.prevMonth": "上个月",
   "calendar.nextMonth": "下个月",
+  "calendar.prevWeek": "上一周",
+  "calendar.nextWeek": "下一周",
+  "calendar.viewMonth": "月",
+  "calendar.viewWeek": "周",
   "calendar.more": "还有 {n} 项",
   "calendar.newTaskFor": "在 {date} 新建任务",
   "calendar.rescheduled": "已改期",
@@ -731,6 +735,10 @@ const en: Record<MessageKey, Message> = {
   /* ── Calendar screen ─────────────────────────────────────── */
   "calendar.prevMonth": "Previous month",
   "calendar.nextMonth": "Next month",
+  "calendar.prevWeek": "Previous week",
+  "calendar.nextWeek": "Next week",
+  "calendar.viewMonth": "Month",
+  "calendar.viewWeek": "Week",
   "calendar.more": "{n} more",
   "calendar.newTaskFor": "New task on {date}",
   "calendar.rescheduled": "Rescheduled",

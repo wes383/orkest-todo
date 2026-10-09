@@ -36,6 +36,16 @@
  *    that day. There is no double-click gesture: two fast clicks are how a
  *    menu is opened twice, not a way to write.
  *
+ * Two modes share the whole machinery — the cursor, the day buckets, the
+ * measured capacity, the drag, the popovers:
+ *
+ *  - 月视图 is the wall calendar: the month's own rows, a day a glance.
+ *  - 周视图 is the execution view: seven days in one tall row, where a chip
+ *    can afford its second line — the due time and the checklist progress
+ *    the month cell has no room to spell out. It exists for the days that
+ *    overflow a month cell, and for reading a day as a schedule rather than
+ *    a count; if a week never gets crowded, the month view is enough.
+ *
  * Weeks run Monday-first, the way every other calendar-shaped thing in the
  * app reads (`focus-spans.ts`: "so the figures read the same in either
  * language").
@@ -76,15 +86,18 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
-import { LOCALES, type Language } from "@/lib/messages";
+import { LOCALES, type Language, type MessageKey } from "@/lib/messages";
 import {
+  addDays,
   dueLabel,
+  formatHM,
   formatDate,
   fromISODate,
   relativeCreated,
   toISODate,
 } from "@/lib/date";
 import { useTodayISO } from "@/lib/use-today";
+import { recurLabel } from "@/lib/recur";
 import {
   PRIORITY_META,
   paletteVar,
@@ -112,6 +125,10 @@ const DATE_ROW_H = 20;
     eight of anything in one cell stops being a glance. */
 const MAX_VISIBLE = 3;
 const MAX_SHOWN = 8;
+/** 周视图's ceiling — a week cell is a column, not a row, and the second
+    line its chips carry makes any chip worth more room; sixteen before the
+    popover takes over keeps the column a schedule, not a wall. */
+const WEEK_MAX_SHOWN = 16;
 
 /** One row's real geometry, measured off the rendered grid. */
 interface Metrics {
@@ -130,6 +147,9 @@ interface Metrics {
 /** `2026-09` — the month the grid is showing, the slice of an ISO date that
     names one. */
 type MonthKey = string;
+
+/** The two shapes the calendar takes. */
+type CalendarMode = "month" | "week";
 
 function monthOf(iso: string): MonthKey {
   return iso.slice(0, 7);
@@ -170,6 +190,25 @@ function gridWeeks(month: MonthKey): string[][] {
     weeks.push(week);
   }
   return weeks;
+}
+
+/** The Monday on or before `iso` — the week's first day, the same
+    Monday-first reading the month grid uses. */
+function weekStart(iso: string): string {
+  const d = fromISODate(iso);
+  return toISODate(
+    new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7))
+  );
+}
+
+/** The seven ISO dates of the week `anchor` falls in, Monday-first. */
+function weekDays(anchor: string): string[] {
+  const first = fromISODate(weekStart(anchor));
+  return Array.from({ length: 7 }, (_, i) =>
+    toISODate(
+      new Date(first.getFullYear(), first.getMonth(), first.getDate() + i)
+    )
+  );
 }
 
 /** The weekday names in Monday-first order — the same trick the heat grids
@@ -234,7 +273,11 @@ function TaskCard({
         >
           {todo.title}
         </h3>
-        {/* The levers, in the order they are reached for: done, then starred. */}
+        {/* The levers, in the order they are reached for: done, then starred.
+            The done lever is ghostIcon's shape but not its hover: a finished
+            task's check is green, and sweeping a pointer across it must not
+            repaint the very state it is showing — the green survives the
+            hover, `foreground` never gets a say. */}
         <button
           type="button"
           aria-label={t(
@@ -242,7 +285,12 @@ function TaskCard({
           )}
           aria-pressed={todo.done}
           onClick={() => onToggle(todo.id)}
-          className={cn(ghostIcon, "h-7 w-7", todo.done && "text-[var(--green)]")}
+          className={cn(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-base ease-out hover:bg-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            todo.done
+              ? "text-[var(--green)] hover:text-[var(--green)]"
+              : "text-foreground-muted hover:text-foreground"
+          )}
         >
           <Icon icon={Check} size="sm" strokeWidth={2.5} />
         </button>
@@ -324,6 +372,40 @@ function TaskCard({
           </dt>
           <dd>{dueLabel(todo.dueDate ?? "", language)}</dd>
         </div>
+        {/* The moment in the day, as the language says it — 17:00 / 5:00 PM.
+            An all-day task has none, and says nothing. */}
+        {todo.dueTime && (
+          <div className="flex items-center gap-2">
+            <dt className="w-14 shrink-0 text-xs text-foreground-faint">
+              {t("editor.dueTime")}
+            </dt>
+            <dd>{formatHM(todo.dueTime, language)}</dd>
+          </div>
+        )}
+        {/* The rule a repeating task lives by, in the card's own words — the
+            same label the task list wears, end condition included. Absent on
+            a one-off, the way the rule itself is. */}
+        {todo.recur && (
+          <div className="flex items-center gap-2">
+            <dt className="w-14 shrink-0 text-xs text-foreground-faint">
+              {t("recur.label")}
+            </dt>
+            <dd className="min-w-0">{recurLabel(todo.recur, language)}</dd>
+          </div>
+        )}
+        {/* The reminder, in the leads the editor offers — a card that is
+            silent about a set reminder would read as "none", and a reminder
+            that fires unannounced is worse. */}
+        {todo.remindBefore !== null && (
+          <div className="flex items-center gap-2">
+            <dt className="w-14 shrink-0 text-xs text-foreground-faint">
+              {t("editor.reminder")}
+            </dt>
+            <dd>
+              {t(`reminder.lead${todo.remindBefore}` as MessageKey)}
+            </dd>
+          </div>
+        )}
         {todo.tags.length > 0 && (
           <div className="flex items-center gap-2">
             <dt className="w-14 shrink-0 text-xs text-foreground-faint">
@@ -413,6 +495,7 @@ function TaskChip({
   onToggleSubtask,
   onDragStart,
   onDragEnd,
+  detail = false,
 }: {
   todo: Todo;
   list: TodoList | undefined;
@@ -427,7 +510,14 @@ function TaskChip({
   onToggleSubtask: (todoId: string, subtaskId: string) => void;
   onDragStart: (event: ReactDragEvent, todo: Todo) => void;
   onDragEnd: () => void;
+  /** 周视图's extra line of sight: the due time and the checklist progress,
+      spelled out where a week cell can afford them and a month cell cannot.
+      The capacity is measured off the real chip, so a taller chip costs
+      exactly what it shows — nothing assumed. */
+  detail?: boolean;
 }) {
+  const { language } = useI18n();
+  const doneCount = todo.subtasks.filter((s) => s.done).length;
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -458,6 +548,11 @@ function TaskChip({
             style={{ backgroundColor: paletteVar(list?.color ?? "gray") }}
           />
           <PriorityBar priority={todo.priority} />
+          {detail && todo.dueTime && (
+            <span className="shrink-0 tabular-nums text-foreground-faint">
+              {formatHM(todo.dueTime, language)}
+            </span>
+          )}
           <span
             className={cn(
               "truncate",
@@ -466,6 +561,11 @@ function TaskChip({
           >
             {todo.title}
           </span>
+          {detail && todo.subtasks.length > 0 && (
+            <span className="shrink-0 tabular-nums text-foreground-faint">
+              {doneCount}/{todo.subtasks.length}
+            </span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent side="right" align="start" className="w-80">
@@ -586,7 +686,13 @@ export function CalendarView({
 }: CalendarViewProps) {
   const { t, language } = useI18n();
   const today = useTodayISO();
-  const [month, setMonth] = useState<MonthKey>(() => monthOf(today));
+  /** 月 or 周 — the two shapes one cursor is read as. */
+  const [mode, setMode] = useState<CalendarMode>("month");
+  /** A day inside whatever period is on screen: the month is read off it in
+      月视图, the week's seven days in 周视图. One cursor rather than two
+      states, so a mode switch lands where the reader already is. */
+  const [anchor, setAnchor] = useState(today);
+  const month = monthOf(anchor);
   /** Whether finished tasks are drawn at all. A view choice like the
       sidebar's rail — on screen, and not persisted: the calendar is read at
       a glance, and most glances want the work that is left. */
@@ -625,7 +731,41 @@ export function CalendarView({
   }, [todos, showDone]);
 
   const weeks = useMemo(() => gridWeeks(month), [month]);
+  /** The cells on screen: the month's rows flattened, or the week's seven
+      days in one row. */
+  const days = useMemo(
+    () => (mode === "week" ? weekDays(anchor) : weeks.flat()),
+    [mode, anchor, weeks]
+  );
   const weekNames = useMemo(() => weekdayNames(language), [language]);
+
+  /** 月视图's step: the first of the adjacent month. Anchored to the 1st on
+      purpose — an anchor day like the 31st has no next-month twin. */
+  const stepMonth = (delta: number) =>
+    setAnchor((a) => `${shiftMonth(monthOf(a), delta)}-01`);
+  /** 周视图's step: the same weekday, one week away. */
+  const stepWeek = (delta: number) => setAnchor((a) => addDays(a, delta * 7));
+
+  /** The switch between the shapes. Entering 周, a reader who is on this
+      month wants the week they are in — today's; one browsing another month
+      stays inside it (its first week) rather than being yanked back to
+      today. Leaving 周 needs nothing: the month is read off the anchor. */
+  const switchMode = (next: CalendarMode) => {
+    if (next === mode) return;
+    setMode(next);
+    if (next === "week") {
+      setAnchor((a) =>
+        monthOf(a) === monthOf(today) ? today : `${monthOf(a)}-01`
+      );
+    }
+  };
+
+  /** Whether 今天 is already on screen — the button dims when it is, month
+      or week. */
+  const onToday =
+    mode === "month"
+      ? month === monthOf(today)
+      : weekStart(anchor) === weekStart(today);
 
   /* The month and year the grid is on, split for the two dropdowns. */
   const year = Number(month.slice(0, 4));
@@ -662,6 +802,24 @@ export function CalendarView({
     for (let y = min; y <= max; y++) out.push(y);
     return out;
   }, [todos, today]);
+
+  /** 周视图's title: the week's span in the reader's own dates — `9月29日 –
+      10月5日` — the year spelled only where the week straddles two. */
+  const weekRangeLabel = useMemo(() => {
+    const first = days[0];
+    const last = days[6];
+    if (first.slice(0, 4) !== last.slice(0, 4)) {
+      const withYear = new Intl.DateTimeFormat(LOCALES[language], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+      return `${withYear.format(fromISODate(first))} – ${withYear.format(
+        fromISODate(last)
+      )}`;
+    }
+    return `${formatDate(first, language)} – ${formatDate(last, language)}`;
+  }, [days, language]);
 
   /*
    * What a row can hold, read off the rendered grid rather than assumed:
@@ -714,7 +872,8 @@ export function CalendarView({
 
   /* Measured on layout rather than after paint (the count is what the paint
      shows), and again whenever the row height can have moved: the window
-     resized, the month's week count changed, or the tasks came and went. */
+     resized, the mode switched (a week cell is a different shape entirely),
+     the period's cell count changed, or the tasks came and went. */
   useLayoutEffect(() => {
     measure();
     const node = gridRef.current;
@@ -722,7 +881,7 @@ export function CalendarView({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [measure, weeks.length, todos.length]);
+  }, [measure, mode, days.length, todos.length]);
 
   /** How many chips a day may show at the current row height. A day that
       holds more folds the rest into its "+N" row rather than scrolling: the
@@ -731,7 +890,10 @@ export function CalendarView({
       Two numbers, because an overflowing day spends a row on the "+N" and
       that row is shorter than a chip — measured, not assumed: charging the
       row a whole chip's height left a band of empty cell under every
-      overflowed day that could have held one more task. */
+      overflowed day that could have held one more task. The ceiling is the
+      mode's own: a week column affords more of a schedule before it stops
+      being a glance. */
+  const maxShown = mode === "week" ? WEEK_MAX_SHOWN : MAX_SHOWN;
   const capacity = useMemo(() => {
     if (metrics === null) {
       return { all: MAX_VISIBLE, withMore: MAX_VISIBLE - 1 };
@@ -740,10 +902,10 @@ export function CalendarView({
     const all = Math.floor((area + gap) / (chip + gap));
     const withMore = Math.floor((area - more) / (chip + gap));
     return {
-      all: Math.max(1, Math.min(all, MAX_SHOWN)),
-      withMore: Math.max(0, Math.min(withMore, MAX_SHOWN)),
+      all: Math.max(1, Math.min(all, maxShown)),
+      withMore: Math.max(0, Math.min(withMore, maxShown)),
     };
-  }, [metrics]);
+  }, [metrics, maxShown]);
 
   const handleDragStart = (event: ReactDragEvent, todo: Todo) => {
     event.dataTransfer.setData("text/plain", todo.id);
@@ -788,119 +950,152 @@ export function CalendarView({
           month's weeks share whatever height is left, and only an
           over-full day folds into its popover. */}
       <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col px-5 pb-5 pt-6 sm:px-6 lg:px-8">
-        {/* Month navigation, on one line that never rewraps: the steppers
-            hug two fixed-width dropdowns, so a long month or year name never
-            shifts them — and a month far away is two clicks, not thirty
-            taps. The order follows the language, the way the words would
-            read: 2026 年 9 月 against September 2026. */}
+        {/* Period navigation, on one line that never rewraps: the steppers
+            hug the title between them — two fixed-width dropdowns in 月
+           视图, the week's span in 周 — so a long month or year name never
+            shifts them. The order follows the language, the way the words
+            would read: 2026 年 9 月 against September 2026. */}
         <div className="mb-4 flex shrink-0 items-center gap-2">
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              aria-label={t("calendar.prevMonth")}
-              onClick={() => setMonth((m) => shiftMonth(m, -1))}
+              aria-label={t(
+                mode === "month" ? "calendar.prevMonth" : "calendar.prevWeek"
+              )}
+              onClick={() => (mode === "month" ? stepMonth(-1) : stepWeek(-1))}
               className={ghostIcon}
             >
               <Icon icon={ChevronLeft} size="sm" />
             </button>
-            {/* The year comes first or second depending on the language. */}
-            {language === "zh" && (
-              <Select
-                value={String(year)}
-                onValueChange={(v) => setMonth(`${v}-${month.slice(5, 7)}`)}
-              >
-                <SelectTrigger
-                  aria-label={t("calendar.yearLabel")}
-                  hideChevron
-                  className="h-9 w-28 shrink-0 justify-center border-0 bg-transparent px-1.5 font-display text-lg font-semibold tabular-nums hover:bg-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>span]:flex-1 [&>span]:text-center"
+            {mode === "month" ? (
+              <>
+                {/* The year comes first or second depending on the language. */}
+                {language === "zh" && (
+                  <Select
+                    value={String(year)}
+                    onValueChange={(v) =>
+                      setAnchor(`${v}-${month.slice(5, 7)}-01`)
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={t("calendar.yearLabel")}
+                      hideChevron
+                      className="h-9 w-28 shrink-0 justify-center border-0 bg-transparent px-1.5 font-display text-lg font-semibold tabular-nums hover:bg-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>span]:flex-1 [&>span]:text-center"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent nativeScroll>
+                      {yearOptions.map((y) => (
+                        <SelectItem key={y} value={String(y)} hideIndicator>
+                          {new Intl.DateTimeFormat(LOCALES[language], {
+                            year: "numeric",
+                          }).format(new Date(y, 0, 1))}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {/* No arrows on the menus either, only the theme's own scrollbar —
+                    see the comment on `nativeScroll` in `ui/select.tsx`. */}
+                <Select
+                  value={String(monthIndex)}
+                  onValueChange={(v) =>
+                    setAnchor(
+                      `${month.slice(0, 4)}-${String(Number(v) + 1).padStart(2, "0")}-01`
+                    )
+                  }
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent nativeScroll>
-                  {yearOptions.map((y) => (
-                    <SelectItem key={y} value={String(y)} hideIndicator>
-                      {new Intl.DateTimeFormat(LOCALES[language], {
-                        year: "numeric",
-                      }).format(new Date(y, 0, 1))}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {/* No arrows on the menus either, only the theme's own scrollbar —
-                see the comment on `nativeScroll` in `ui/select.tsx`. */}
-            <Select
-              value={String(monthIndex)}
-              onValueChange={(v) =>
-                setMonth(
-                  `${month.slice(0, 4)}-${String(Number(v) + 1).padStart(2, "0")}`
-                )
-              }
-            >
-              <SelectTrigger
-                aria-label={t("calendar.monthLabel")}
-                hideChevron
-                className="h-9 w-32 shrink-0 justify-center border-0 bg-transparent px-1.5 font-display text-lg font-semibold tracking-tight hover:bg-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>span]:flex-1 [&>span]:text-center"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent nativeScroll>
-                {monthNames.map((name, index) => (
-                  <SelectItem key={name} value={String(index)} hideIndicator>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {language !== "zh" && (
-              <Select
-                value={String(year)}
-                onValueChange={(v) => setMonth(`${v}-${month.slice(5, 7)}`)}
-              >
-                <SelectTrigger
-                  aria-label={t("calendar.yearLabel")}
-                  hideChevron
-                  className="h-9 w-28 shrink-0 justify-center border-0 bg-transparent px-1.5 font-display text-lg font-semibold tabular-nums hover:bg-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>span]:flex-1 [&>span]:text-center"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent nativeScroll>
-                  {yearOptions.map((y) => (
-                    <SelectItem key={y} value={String(y)} hideIndicator>
-                      {new Intl.DateTimeFormat(LOCALES[language], {
-                        year: "numeric",
-                      }).format(new Date(y, 0, 1))}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    aria-label={t("calendar.monthLabel")}
+                    hideChevron
+                    className="h-9 w-32 shrink-0 justify-center border-0 bg-transparent px-1.5 font-display text-lg font-semibold tracking-tight hover:bg-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>span]:flex-1 [&>span]:text-center"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent nativeScroll>
+                    {monthNames.map((name, index) => (
+                      <SelectItem key={name} value={String(index)} hideIndicator>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {language !== "zh" && (
+                  <Select
+                    value={String(year)}
+                    onValueChange={(v) =>
+                      setAnchor(`${v}-${month.slice(5, 7)}-01`)
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={t("calendar.yearLabel")}
+                      hideChevron
+                      className="h-9 w-28 shrink-0 justify-center border-0 bg-transparent px-1.5 font-display text-lg font-semibold tabular-nums hover:bg-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&>span]:flex-1 [&>span]:text-center"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent nativeScroll>
+                      {yearOptions.map((y) => (
+                        <SelectItem key={y} value={String(y)} hideIndicator>
+                          {new Intl.DateTimeFormat(LOCALES[language], {
+                            year: "numeric",
+                          }).format(new Date(y, 0, 1))}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </>
+            ) : (
+              /* A fixed-width slot, the dropdowns' own trick: the span's
+                 width never moves, so a week with a shorter label does not
+                 slide the steppers — the wide case (a week straddling two
+                 years) is what the slot is sized for. */
+              <span className="flex h-9 w-72 shrink-0 items-center justify-center whitespace-nowrap font-display text-lg font-semibold tracking-tight tabular-nums">
+                {weekRangeLabel}
+              </span>
             )}
             <button
               type="button"
-              aria-label={t("calendar.nextMonth")}
-              onClick={() => setMonth((m) => shiftMonth(m, 1))}
+              aria-label={t(
+                mode === "month" ? "calendar.nextMonth" : "calendar.nextWeek"
+              )}
+              onClick={() => (mode === "month" ? stepMonth(1) : stepWeek(1))}
               className={ghostIcon}
             >
               <Icon icon={ChevronRight} size="sm" />
             </button>
           </div>
-          {/* Always in the row, even on the current month — a button that
+          {/* Always in the row, even when today is on screen — a button that
               appears and disappears shifts the whole line as it comes. */}
           <Button
             variant="outline"
             size="sm"
-            disabled={month === monthOf(today)}
-            onClick={() => setMonth(monthOf(today))}
+            disabled={onToday}
+            onClick={() => setAnchor(today)}
           >
             {t("date.today")}
           </Button>
-          {/* 隐藏已完成: same shape as the 今天 button beside it — one row of
+          {/* 月 / 周 — the same quiet outline button as 隐藏已完成 beside
+              it, one click taking you to the other shape. The label names
+              where a click lands — 周 while on the month, 月 while on the
+              week — the way the filter's label names what it will do. The
+              pair sits at the row's far end: the toggle carries the auto
+              margin, the filter rides just behind it. */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            onClick={() => switchMode(mode === "month" ? "week" : "month")}
+          >
+            {t(mode === "month" ? "calendar.viewWeek" : "calendar.viewMonth")}
+          </Button>
+          {/* 隐藏已完成: same shape as the view toggle beside it — one row of
               quiet controls, one style. The label itself says which way the
               filter is set. */}
           <Button
             variant="outline"
             size="sm"
-            className="ml-auto"
             aria-pressed={!showDone}
             onClick={() => setShowDone((v) => !v)}
           >
@@ -921,16 +1116,17 @@ export function CalendarView({
         </div>
 
         {/* The grid: hairlines painted by a `bg-border` wrapper showing
-            through 1px gaps. The rows are the month's own weeks, sharing the
-            leftover height equally. */}
+            through 1px gaps. The rows are the month's own weeks sharing the
+            leftover height equally — or, in 周, the week's seven days in one
+            tall row. */}
         <div
           ref={gridRef}
           className="grid min-h-0 flex-1 grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border"
           style={{
-            gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${mode === "week" ? 1 : weeks.length}, minmax(0, 1fr))`,
           }}
         >
-          {weeks.flat().map((iso) => {
+          {days.map((iso) => {
             const items = byDay.get(iso) ?? [];
             // A day that overflows keeps one task back for the "+N" row:
             // `withMore` is what can sit above that row.
@@ -942,7 +1138,9 @@ export function CalendarView({
                     Math.min(items.length - 1, capacity.withMore)
                   );
             const hidden = items.length - shown.length;
-            const inMonth = monthOf(iso) === month;
+            // Only 月视图 has edges to dim: a week is all foreground, there
+            // is no month to be outside of.
+            const inMonth = mode !== "month" || monthOf(iso) === month;
             return (
               <div
                 key={iso}
@@ -976,18 +1174,34 @@ export function CalendarView({
                   data-date-row=""
                   className="flex shrink-0 items-center justify-between px-0.5"
                 >
-                  <span
-                    className={cn(
-                      "flex h-5 w-5 items-center justify-center rounded-full text-xs tabular-nums",
-                      iso === today
-                        ? "bg-foreground font-semibold text-background"
-                        : inMonth
-                          ? "text-foreground-muted"
-                          : "text-foreground-faint"
-                    )}
-                  >
-                    {Number(iso.slice(8))}
-                  </span>
+                  {/* 月 reads a bare day number off the month it sits in;
+                      周 has no month to lean on, so the date says itself —
+                      10月9日 / Oct 9 — in the room a week column affords. */}
+                  {mode === "week" ? (
+                    <span
+                      className={cn(
+                        "flex h-5 items-center rounded-full px-1.5 text-xs tabular-nums",
+                        iso === today
+                          ? "bg-foreground font-semibold text-background"
+                          : "text-foreground-muted"
+                      )}
+                    >
+                      {formatDate(iso, language)}
+                    </span>
+                  ) : (
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 items-center justify-center rounded-full text-xs tabular-nums",
+                        iso === today
+                          ? "bg-foreground font-semibold text-background"
+                          : inMonth
+                            ? "text-foreground-muted"
+                            : "text-foreground-faint"
+                      )}
+                    >
+                      {Number(iso.slice(8))}
+                    </span>
+                  )}
                   {/* The mouse path to a task on this day; the keyboard path
                       is the same button, reached by Tab. */}
                   <button
@@ -1013,6 +1227,7 @@ export function CalendarView({
                       key={todo.id}
                       todo={todo}
                       list={listById.get(todo.listId)}
+                      detail={mode === "week"}
                       open={openChipId === todo.id}
                       onOpenChange={(open) =>
                         setOpenChipId(open ? todo.id : null)
