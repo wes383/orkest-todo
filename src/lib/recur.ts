@@ -12,7 +12,7 @@ import {
   translate,
   type Language,
 } from "@/lib/messages";
-import { addDays, fromISODate, toISODate } from "@/lib/date";
+import { addDays, formatDate, fromISODate, toISODate } from "@/lib/date";
 import type { Recur } from "@/lib/types";
 
 /** 2024-01-07 was a Sunday — a fixed anchor the weekday names are read from. */
@@ -43,7 +43,7 @@ export function nextDueDate(recur: Recur, fromISO: string): string | null {
       return addDays(fromISO, Math.max(1, recur.interval));
 
     case "weekly":
-      return addDays(fromISO, 7);
+      return addDays(fromISO, 7 * Math.max(1, recur.interval || 1));
 
     case "weekdays": {
       if (recur.days.length === 0) return null;
@@ -74,6 +74,45 @@ export function nextDueDate(recur: Recur, fromISO: string): string | null {
 }
 
 /**
+ * The next occurrence of a repeating task, end conditions included: the due
+ * date the next instance carries, and the rule that instance carries — a
+ * count-based rule arrives decremented, so "共 3 次" counts itself down
+ * through each spawn until the last instance spawns nothing. `null` when the
+ * rule names no next day, the next day falls past an `until` date, or the
+ * current instance is the last a `count` allows — callers treat it exactly as
+ * "complete without spawning", the same contract [`nextDueDate`]'s `null` has.
+ *
+ * An `until` date is inclusive: an occurrence may land on it, and completing
+ * *that* one is what ends the series.
+ */
+export function nextOccurrence(
+  recur: Recur,
+  fromISO: string
+): { date: string; recur: Recur } | null {
+  const date = nextDueDate(recur, fromISO);
+  if (!date) return null;
+  if (recur.end?.kind === "until" && date > recur.end.date) return null;
+  if (recur.end?.kind === "count") {
+    if (recur.end.n <= 1) return null;
+    return { date, recur: { ...recur, end: { kind: "count", n: recur.end.n - 1 } } };
+  }
+  return { date, recur };
+}
+
+/**
+ * Fills in fields that arrived after a rule was first saved. Old storage can
+ * hold a bare `{ kind: "weekly" }` from before the weekly interval existed —
+ * coercion happens once at the load door, so every reader sees a complete
+ * rule, the same bargain the store's other `??` defaults strike.
+ */
+export function normalizeRecur(recur: Recur | null): Recur | null {
+  if (recur?.kind === "weekly" && typeof (recur as { interval?: number }).interval !== "number") {
+    return { kind: "weekly", interval: 1, end: recur.end };
+  }
+  return recur ?? null;
+}
+
+/**
  * The rule as an RFC 5545 (iCalendar) RRULE, for exports meant to be read by
  * other software — a spreadsheet, a calendar importer — rather than a person
  * scanning a column. The localized label stays on the card and in the editor;
@@ -91,24 +130,35 @@ export function nextDueDate(recur: Recur, fromISO: string): string | null {
  */
 export function recurRrule(recur: Recur, dueISO: string | null): string {
   const day = (index: number) => RRULE_DAY[index];
+  // RFC 5545 keeps UNTIL and COUNT mutually exclusive — exactly one may end a
+  // rule, which is also what the model itself allows. UNTIL drops the dashes:
+  // `2026-12-31` becomes `20261231`, the DATE form the spec writes.
+  const end = () =>
+    recur.end?.kind === "until"
+      ? `;UNTIL=${recur.end.date.replace(/-/g, "")}`
+      : recur.end?.kind === "count"
+        ? `;COUNT=${recur.end.n}`
+        : "";
   switch (recur.kind) {
     case "daily":
-      return recur.interval === 1
-        ? "FREQ=DAILY"
-        : `FREQ=DAILY;INTERVAL=${recur.interval}`;
-    case "weekly":
-      return dueISO
-        ? `FREQ=WEEKLY;BYDAY=${day(fromISODate(dueISO).getDay())}`
-        : "FREQ=WEEKLY";
+      return (
+        (recur.interval === 1 ? "FREQ=DAILY" : `FREQ=DAILY;INTERVAL=${recur.interval}`) + end()
+      );
+    case "weekly": {
+      const base = recur.interval > 1 ? `FREQ=WEEKLY;INTERVAL=${recur.interval}` : "FREQ=WEEKLY";
+      return (dueISO ? `${base};BYDAY=${day(fromISODate(dueISO).getDay())}` : base) + end();
+    }
     case "weekdays":
-      return `FREQ=WEEKLY;BYDAY=${[...recur.days]
-        .sort((a, b) => a - b)
-        .map(day)
-        .join(",")}`;
+      return (
+        `FREQ=WEEKLY;BYDAY=${[...recur.days]
+          .sort((a, b) => a - b)
+          .map(day)
+          .join(",")}` + end()
+      );
     case "monthly":
-      return "FREQ=MONTHLY";
+      return "FREQ=MONTHLY" + end();
     case "yearly":
-      return "FREQ=YEARLY";
+      return "FREQ=YEARLY" + end();
   }
 }
 
@@ -120,13 +170,26 @@ const RRULE_DAY = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
  * rule, so the card and the form can never disagree about what it repeats.
  */
 export function recurLabel(recur: Recur, lang: Language): string {
+  const base = recurBaseLabel(recur, lang);
+  // The card states when the series stops in the same breath as how it steps,
+  // so a rule and its expiry never have to be read from two places. The date
+  // speaks the app's display format — 10月15日 / Oct 15 — not the storage ISO.
+  if (!recur.end) return base;
+  return recur.end.kind === "until"
+    ? translate(lang, "recur.untilSuffix", { base, date: formatDate(recur.end.date, lang) })
+    : translate(lang, "recur.countSuffix", { base, n: recur.end.n });
+}
+
+function recurBaseLabel(recur: Recur, lang: Language): string {
   switch (recur.kind) {
     case "daily":
       return recur.interval === 1
         ? translate(lang, "recur.everyDay")
         : translate(lang, "recur.everyNDays", { n: recur.interval });
     case "weekly":
-      return translate(lang, "recur.weekly");
+      return recur.interval === 1
+        ? translate(lang, "recur.weekly")
+        : translate(lang, "recur.everyNWeeks", { n: recur.interval });
     case "weekdays": {
       if (recur.days.length === 0) return translate(lang, "recur.weekly");
       const names = [...recur.days]

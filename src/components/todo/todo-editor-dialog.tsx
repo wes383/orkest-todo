@@ -451,6 +451,18 @@ export function TodoEditorDialog({
                             form.recur?.kind === "daily"
                               ? form.recur.interval
                               : 1,
+                          end: form.recur?.end,
+                        },
+                      });
+                    } else if (v === "weekly") {
+                      patch({
+                        recur: {
+                          kind: "weekly",
+                          interval:
+                            form.recur?.kind === "weekly"
+                              ? form.recur.interval
+                              : 1,
+                          end: form.recur?.end,
                         },
                       });
                     } else if (v === "weekdays") {
@@ -462,11 +474,12 @@ export function TodoEditorDialog({
                             form.recur.days.length > 0
                               ? form.recur.days
                               : [1],
+                          end: form.recur?.end,
                         },
                       });
                     } else {
-                      // weekly / monthly / yearly carry no parameters.
-                      patch({ recur: { kind: v } as Recur });
+                      // monthly / yearly carry no step parameters.
+                      patch({ recur: { kind: v, end: form.recur?.end } as Recur });
                     }
                   }}
                 >
@@ -495,11 +508,34 @@ export function TodoEditorDialog({
                     value={form.recur.interval}
                     onChange={(e) => {
                       const n = Number.parseInt(e.target.value, 10);
-                      if (Number.isNaN(n)) return;
+                      if (Number.isNaN(n) || form.recur?.kind !== "daily") return;
                       patch({
                         recur: {
                           kind: "daily",
                           interval: Math.min(365, Math.max(1, n)),
+                          end: form.recur.end,
+                        },
+                      });
+                    }}
+                  />
+                )}
+
+                {form.recur?.kind === "weekly" && (
+                  <Input
+                    type="number"
+                    min={1}
+                    max={52}
+                    aria-label={t("recur.intervalWeeksLabel")}
+                    className="w-24 shrink-0"
+                    value={form.recur.interval}
+                    onChange={(e) => {
+                      const n = Number.parseInt(e.target.value, 10);
+                      if (Number.isNaN(n) || form.recur?.kind !== "weekly") return;
+                      patch({
+                        recur: {
+                          kind: "weekly",
+                          interval: Math.min(52, Math.max(1, n)),
+                          end: form.recur.end,
                         },
                       });
                     }}
@@ -525,7 +561,9 @@ export function TodoEditorDialog({
                           const days = on
                             ? form.recur.days.filter((d) => d !== day)
                             : [...form.recur.days, day];
-                          patch({ recur: { kind: "weekdays", days } });
+                          patch({
+                            recur: { kind: "weekdays", days, end: form.recur.end },
+                          });
                         }}
                         className={cn(
                           "h-8 w-10 rounded-md border text-xs font-medium transition-colors duration-base",
@@ -538,6 +576,98 @@ export function TodoEditorDialog({
                       </button>
                     );
                   })}
+                </div>
+              )}
+
+              {/*
+               * When the series stops — the same select-plus-parameter shape
+               * the kind row uses. 「永不结束」 is absence: no `end` on the rule at
+               * all, the way every rule has meant it so far. An `until` date
+               * is inclusive (an occurrence may land on it), and a count says
+               * how many occurrences the series has in total, this one
+               * included — so the floor is 2, since a series of one is a
+               * one-off wearing a costume.
+               */}
+              {form.recur && (
+                <div className="mt-3 flex items-center gap-2">
+                  <Select
+                    value={form.recur.end?.kind ?? "none"}
+                    onValueChange={(v) => {
+                      if (form.recur == null) return;
+                      if (v === "none") {
+                        patch({ recur: { ...form.recur, end: undefined } });
+                      } else if (v === "until") {
+                        patch({
+                          recur: {
+                            ...form.recur,
+                            end: { kind: "until", date: todayISO() },
+                          },
+                        });
+                      } else {
+                        patch({
+                          recur: { ...form.recur, end: { kind: "count", n: 2 } },
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      aria-label={t("recur.endLabel")}
+                      className="flex-1 text-sm"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t("recur.endNone")}</SelectItem>
+                      <SelectItem value="until">{t("recur.endUntil")}</SelectItem>
+                      <SelectItem value="count">{t("recur.endCount")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {form.recur.end?.kind === "until" && (
+                    <DatePicker
+                      aria-label={t("recur.endUntil")}
+                      placeholder={t("editor.duePlaceholder")}
+                      intlLocale={locale}
+                      className="w-44 shrink-0"
+                      value={fromISODate(form.recur.end.date)}
+                      onChange={(v) => {
+                        if (
+                          !(v instanceof Date) ||
+                          form.recur?.end?.kind !== "until"
+                        )
+                          return;
+                        patch({
+                          recur: {
+                            ...form.recur,
+                            end: { kind: "until", date: toISODate(v) },
+                          },
+                        });
+                      }}
+                      shortcuts={shortcuts}
+                    />
+                  )}
+
+                  {form.recur.end?.kind === "count" && (
+                    <Input
+                      type="number"
+                      min={2}
+                      max={999}
+                      aria-label={t("recur.endCount")}
+                      className="w-24 shrink-0"
+                      value={form.recur.end.n}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10);
+                        if (Number.isNaN(n) || form.recur?.end?.kind !== "count")
+                          return;
+                        patch({
+                          recur: {
+                            ...form.recur,
+                            end: { kind: "count", n: Math.min(999, Math.max(2, n)) },
+                          },
+                        });
+                      }}
+                    />
+                  )}
                 </div>
               )}
 

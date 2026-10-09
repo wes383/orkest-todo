@@ -91,18 +91,30 @@ export interface Todo {
  * `daily` carries its own interval — every 1 day is 每天, every 3 days is
  * 每 3 天 — while `weekdays` names whole weekdays (0 = Sunday … 6 = Saturday)
  * and repeats on whichever of them come next, in calendar order rather than in
- * the order picked. The bare kinds (`weekly` / `monthly` / `yearly`) advance
- * the due date by one of their unit, and a month or year that has no such day
+ * the order picked. `daily` and `weekly` carry their own interval, and the
+ * bare kinds (`monthly` / `yearly`) advance the due date by one of their unit, and a month or year that has no such day
  * (Jan 31 → Feb, Feb 29 → a common year) clamps to that unit's last day.
  *
  * `null` on a `Todo` means the task does not repeat.
  */
-export type Recur =
+type RecurKind =
   | { kind: "daily"; interval: number }
-  | { kind: "weekly" }
+  | { kind: "weekly"; interval: number }
   | { kind: "weekdays"; days: number[] }
   | { kind: "monthly" }
   | { kind: "yearly" };
+
+/**
+ * When a repeat rule stops. `until` admits no occurrence past that local date
+ * (one may still land on it); `count` names the total number of occurrences,
+ * the instance the rule was written on included. Absent = repeats forever.
+ */
+export type RecurEnd =
+  | { kind: "until"; date: string }
+  | { kind: "count"; n: number };
+
+/** How a rule steps has nothing to do with when it stops — `end` rides on every kind. */
+export type Recur = RecurKind & { end?: RecurEnd };
 
 export interface TodoList {
   id: string;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { uid } from "@/lib/utils";
 import { translate, type Language } from "@/lib/messages";
 import type { GoalConfig, Priority, Recur, Subtask, Todo, TodoList } from "@/lib/types";
-import { nextDueDate } from "@/lib/recur";
+import { nextOccurrence, normalizeRecur } from "@/lib/recur";
 
 const STORAGE_KEY = "orkest-todo.v1";
 
@@ -34,20 +34,24 @@ function newSubtask(title: string): Subtask {
 
 /**
  * The next occurrence of a repeating task — a fresh task with the rule's next
- * due date and an unticked checklist. `undefined` when the task does not
- * repeat, has no due date to advance from, or its rule names no next day.
+ * due date and an unticked checklist. The spawned instance carries the rule
+ * as [`nextOccurrence`] hands it over, so a count-based rule arrives
+ * decremented; `undefined` when the task does not repeat, has no due date to
+ * advance from, or its rule is exhausted — end date passed, or this was the
+ * last occurrence a count allowed.
  */
 function spawnNextOccurrence(target: Todo): Todo | undefined {
   if (!target.recur || !target.dueDate) return undefined;
-  const nextDue = nextDueDate(target.recur, target.dueDate);
-  if (!nextDue) return undefined;
+  const next = nextOccurrence(target.recur, target.dueDate);
+  if (!next) return undefined;
   return {
     ...target,
     id: uid("todo"),
     done: false,
     completedAt: null,
     createdAt: Date.now(),
-    dueDate: nextDue,
+    dueDate: next.date,
+    recur: next.recur,
     subtasks: target.subtasks.map((s) => newSubtask(s.title)),
   };
 }
@@ -293,7 +297,7 @@ function load(lang: Language): PersistedState {
       // Coercing once at the door keeps every reader free of the question.
       todos: parsed.todos.map((todo) => ({
         ...todo,
-        recur: todo.recur ?? null,
+        recur: normalizeRecur(todo.recur ?? null),
         // `dueTime` postdates the first release — old storage omits it, and
         // every old task was by definition an all-day task.
         dueTime: todo.dueTime ?? null,
