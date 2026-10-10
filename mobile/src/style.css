@@ -243,9 +243,12 @@ body {
 }
 
 /* The header's reconfigure pill: the ghost given a resting ground and full
-   foreground so the word reads as a button at a glance, not a caption. */
+   foreground so the word reads as a button at a glance, not a caption. The
+   extra bottom padding is optical, not structural: CJK glyphs draw low in
+   their em box, and the 1px lift puts "设置" back on the pill's midline
+   (Latin reads a hair high there, which passes). */
 .header .ghost {
-  padding: 0 14px;
+  padding: 0 14px 2px;
   background: var(--hover-bg);
   color: var(--foreground);
 }
