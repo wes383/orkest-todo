@@ -10,12 +10,23 @@
  *   pull → merge into the local log → push the difference → push the
  *   switch, the lists and the rules alongside.
  *
- * The cycle runs on a 5-second poll rather than a Realtime subscription on
- * purpose: the row-level policies read the sync code from the
- * `x-sync-code` request header, which PostgREST forwards to the database —
- * but the Realtime WebSocket does not go through PostgREST, so it can never
- * present the code and would see no rows at all. A poll the policies can
- * check is worth more than a push the policies would block.
+ * The cycle is knocked awake by Realtime rather than run on a fast poll: a
+ * trigger in `supabase-schema.sql` calls `realtime.send` on every write, the
+ * client subscribes to the `sync:<code>` topic that carries its code, and a
+ * knock runs a cycle at once — with a forced full pull, because an edit to a
+ * row that is neither the tail nor the count is exactly what the probe cannot
+ * see. The channel is public on purpose: it asks for no JWT, which is the
+ * same thing the header-based policies ask for, and the topic name carries
+ * the code — which is already the whole of the identity. Anyone holding it
+ * can read the space through PostgREST anyway; the socket adds nothing new.
+ *
+ * The poll stays, slowed to a minute. The socket is fire-and-forget — a
+ * message missed while offline or asleep is never replayed — and the window's
+ * pruning, the marker's heartbeat and this side's own pushes only travel by
+ * HTTP, so the slow tick is what heals a dropped knock and carries the
+ * cycle's quieter duties. A knock that echoes this side's own push lands one
+ * extra full pull — a few kilobytes — and stops there, since the cycle it
+ * wakes finds no difference to push.
  *
  * Pushes are differences against the rows the last pull actually showed
  * (`remoteSpansRef`), never blind overwrites: a row missing from the outbound
@@ -35,8 +46,9 @@
  * log, and only the desktop can know that has happened. Nothing is lost — the
  * cloud never held the archive, and the phone is looking at today.
  *
- * A real pull is O(the whole table) and a cycle runs every 5 s, so the pull is
- * gated behind a one-request probe: the newest row plus the exact row count,
+ * A real pull is O(the whole table), and a cycle now runs on every knock and
+ * at least once a minute, so the pull is gated behind a one-request probe:
+ * the newest row plus the exact row count,
  * read off a `limit(1)` query. The mirror from the last pull answers for
  * everything else, because an append, a deletion and an edit to the tail are
  * the only things the phone can do — and each of them moves one of those two
@@ -144,16 +156,28 @@ export interface SyncControls {
   enabled: boolean;
   status: SyncStatus;
   error: string | null;
+  /** The Realtime channel's failure, held apart from `error`: a cycle can
+      succeed over HTTP all day while the socket is dead, and the settings
+      page wants to say both things — "cycles run" and "knocks don't
+      travel". */
+  channelError: string | null;
   lastSyncAt: number | null;
   setEnabled: (value: boolean) => void;
   regenerateCode: () => void;
 }
 
-const POLL_MS = 5000;
+/** The healer — one cycle a minute while enabled, and one immediately on
+    enable. Realtime carries the fast path (see the trigger in
+    `supabase-schema.sql`): the poll is what catches a knock the socket
+    dropped, prunes rows ageing out of the window, and keeps the marker's
+    heartbeat honest. */
+const POLL_MS = 60_000;
 /** A local change waits this long before it insists on a cycle — long enough
     that a burst of edits (a hand edit of the log, say) leaves as one push. */
 const NUDGE_MS = 400;
-/** Cycles between forced full pulls — the safety net under the probe. */
+/** Cycles between forced full pulls — the safety net under the probe and the
+    knock (a knock forces one anyway; this covers a socket that never
+    delivers). */
 const FULL_PULL_EVERY = 60;
 /** The ceiling a failed cycle's backoff doubles up to. */
 const MAX_RETRY_MS = 5 * 60_000;
@@ -235,7 +259,9 @@ async function purgeDataSpace(code: string): Promise<void> {
  * an edit to the tail (a close, a re-filing) moves the newest row's body. A
  * count the server did not answer, or one that disagrees with the mirror, is
  * never trusted: the pull happens instead. `force` skips the probe outright,
- * which is how a periodic full pull gets in.
+ * which is how a periodic full pull gets in — and how a Realtime knock gets
+ * in, since a knock names no row and may be announcing an edit the probe
+ * cannot see.
  *
  * A pull reads the whole table and is deliberately not narrowed to the
  * window, small as that window keeps it: this side does the pruning, and it
@@ -282,6 +308,7 @@ export function useFocusSync(
   settings: AppSettings
 ): SyncControls {
   const [config, setConfig] = useState<SyncConfig>(loadSyncConfig);
+  const [channelError, setChannelError] = useState<string | null>(null);
 
   useEffect(() => saveSyncConfig(config), [config]);
 
@@ -323,6 +350,9 @@ export function useFocusSync(
   } | null>(null);
   /** Cycles since the last forced full pull; see `FULL_PULL_EVERY`. */
   const cyclesSinceFullRef = useRef(0);
+  /** Set by a Realtime knock: the next cycle takes a full pull, because a
+      knock may be announcing an edit the probe cannot see. */
+  const forceFullRef = useRef(false);
   /** Consecutive failures, and the moment the next automatic cycle may run. */
   const failuresRef = useRef(0);
   const retryAfterRef = useRef(0);
@@ -331,8 +361,9 @@ export function useFocusSync(
   const pendingRef = useRef(false);
 
   /** Reports a failure and arms the backoff. A server that is down, or a
-      network that is gone, should not be asked every 5 s — the interval only
-      doubles, capped, and a single success resets it to nothing. */
+      network that is gone, should not be asked once a minute, let alone more
+      — the interval only doubles, capped, and a single success resets it to
+      nothing. */
   const fail = useCallback((message: string) => {
     failuresRef.current += 1;
     const wait = Math.min(POLL_MS * 2 ** failuresRef.current, MAX_RETRY_MS);
@@ -372,8 +403,10 @@ export function useFocusSync(
         pushedStateRef.current = null;
         pushedRulesRef.current = null;
         cyclesSinceFullRef.current = 0;
+        forceFullRef.current = false;
         failuresRef.current = 0;
         retryAfterRef.current = 0;
+        setChannelError(null);
       })
       .catch(() => {
         if (!disposed) setClient(null);
@@ -395,11 +428,13 @@ export function useFocusSync(
       try {
         // ── Pull ────────────────────────────────────────────────
         const prevRemote = remoteSpansRef.current;
-        const remote = await pullRemote(
-          client,
-          prevRemote,
-          cyclesSinceFullRef.current >= FULL_PULL_EVERY
-        );
+        // A knock forces the full pull: it names no row, and the one change
+        // the probe cannot see — an edit to a row that is neither the tail
+        // nor the count — is exactly what a knock may be announcing.
+        const force =
+          forceFullRef.current || cyclesSinceFullRef.current >= FULL_PULL_EVERY;
+        forceFullRef.current = false;
+        const remote = await pullRemote(client, prevRemote, force);
         // A probe hit hands back the mirror itself; a real pull resets the
         // countdown that keeps one coming even when nothing ever moves.
         cyclesSinceFullRef.current =
@@ -576,8 +611,8 @@ export function useFocusSync(
     [fail]
   );
 
-  /* The poll — one cycle every 5 s while enabled, and one immediately on
-     enable (which is also the app's startup merge). */
+  /* The poll — the slow healer: one cycle a minute while enabled, and one
+     immediately on enable (which is also the app's startup merge). */
   useEffect(() => {
     if (client === null || clientCode === null) {
       setStatus("off");
@@ -593,6 +628,42 @@ export function useFocusSync(
     tick();
     const id = window.setInterval(tick, POLL_MS);
     return () => window.clearInterval(id);
+  }, [client, clientCode, runCycle, fail]);
+
+  /* The knock — Realtime broadcast from the database (see the trigger in
+     `supabase-schema.sql`). Every write the space receives rings the topic
+     this code owns, and a knock wakes a cycle at once, forced to a full pull.
+
+     The echo of this side's own push is a knock too, and is left to land: the
+     cycle it wakes pulls, finds no difference, and pushes nothing, so the
+     loop ends after one extra read. A knock that arrives while a cycle is
+     already running merges into its `pendingRef` follow-up, as any request
+     does. */
+  useEffect(() => {
+    if (client === null || clientCode === null) return;
+    const channel = client
+      .channel(`sync:${clientCode}`)
+      .on("broadcast", { event: "changed" }, () => {
+        forceFullRef.current = true;
+        if (Date.now() < retryAfterRef.current) return;
+        void runCycle(client, clientCode).catch((e: unknown) =>
+          fail(String(e))
+        );
+      });
+    channel.subscribe((status) => {
+      // The subscription fails silently unless someone watches the states.
+      // A cycle can succeed over HTTP all day while the socket is dead, so
+      // the failure is carried into the settings page rather than only to
+      // the console; a CLOSED, though, is also how a teardown says goodbye,
+      // and it stays console-only.
+      if (status === "SUBSCRIBED") setChannelError(null);
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
+        setChannelError(status);
+      else console.warn("focus sync channel:", status);
+    });
+    return () => {
+      void client.removeChannel(channel);
+    };
   }, [client, clientCode, runCycle, fail]);
 
   /* A local change asks for a cycle sooner than the poll would get to it —
@@ -648,6 +719,7 @@ export function useFocusSync(
     enabled,
     status,
     error,
+    channelError,
     lastSyncAt,
     setEnabled,
     regenerateCode,

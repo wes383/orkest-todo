@@ -14,11 +14,17 @@
 -- reads NULL and matches nothing, so the anon key alone sees no rows.
 --
 -- Note: Supabase Realtime connects over WebSocket and cannot carry this
--- header, so both clients poll instead of subscribing (desktop 5 s, phone
--- 10 s). A poll does not read the table every time: each side first reads the
--- newest row plus the exact row count — the two things every change moves —
--- and reads the table in full only when one of them disagrees with what it
--- already holds. A failed poll backs off (doubling, capped at 5 min).
+-- header, so no policy can gate a socket the way it gates a request. The
+-- trigger at the foot of this file works around that instead of fighting it:
+-- every write a space receives rings the `sync:<owner_code>` topic through
+-- `realtime.send`, and each client subscribes to the topic that carries its
+-- own code. The channel is public on purpose — the code in its name is
+-- already the whole of the identity (anyone holding it can read the space
+-- through PostgREST), and the payload names nothing but the table and the
+-- verb. A knock wakes a full cycle on the listening side within a moment;
+-- the poll stays on as the healer, slowed to a minute, because the socket
+-- neither replays a message missed while offline nor reaches a tab the
+-- browser has put to sleep.
 --
 -- `focus_spans` is a rolling window and NOT the archive. The desktop keeps the
 -- whole log locally and mirrors only the last two days of it up here — enough
@@ -195,6 +201,75 @@ create policy "app_settings by sync code"
   on public.app_settings for all
   using      (current_setting('request.headers', true)::json->>'x-sync-code' = owner_code)
   with check (current_setting('request.headers', true)::json->>'x-sync-code' = owner_code);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The knock: Realtime broadcast, straight from the writes
+--
+-- Every INSERT, UPDATE or DELETE on any of the four tables rings one topic —
+-- `sync:<owner_code>` — through `realtime.send`. The clients subscribe to the
+-- topic that carries their own code (public channels, no JWT: see the header
+-- note), and a knock wakes a full pull-merge-push cycle at once instead of
+-- waiting for the slow poll.
+--
+-- The payload is deliberately minimal — table and verb, nothing else. The
+-- listener does not act on the message body; it uses the knock as a hint that
+-- *something* moved and reads the truth for itself, so this side's mirrors
+-- and difference-pushes stay the single source of what travels.
+--
+-- The broadcast must never be able to break the write that caused it: the
+-- call is wrapped so a Realtime outage, a missing grant or a missing
+-- extension leaves the row written and the knock simply lost — the poll
+-- heals what the socket drops.
+--
+-- Re-runnable: the function is `create or replace`, each trigger is dropped
+-- before it is created.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- SECURITY DEFINER: the app writes through PostgREST as `anon`, and whether
+-- `anon` holds EXECUTE on realtime.send must not be part of the equation —
+-- the function takes no arguments and broadcasts nothing but a table name
+-- and a verb, so running as its owner adds no reachable surface. The
+-- search_path is pinned, as a definer function's should always be.
+create or replace function public.orkest_broadcast_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, realtime
+as $$
+begin
+  begin
+    perform realtime.send(
+      jsonb_build_object('table', tg_table_name, 'op', tg_op),
+      'changed',
+      'sync:' || coalesce(new.owner_code, old.owner_code),
+      false -- public: the topic name carries the code, which is the whole identity
+    );
+  exception when others then
+    null; -- a lost knock is a slow poll, never a failed write
+  end;
+  return null; -- AFTER triggers keep no return value
+end;
+$$;
+
+drop trigger if exists "orkest_broadcast_focus_spans" on public.focus_spans;
+create trigger "orkest_broadcast_focus_spans"
+  after insert or update or delete on public.focus_spans
+  for each row execute function public.orkest_broadcast_change();
+
+drop trigger if exists "orkest_broadcast_focus_state" on public.focus_state;
+create trigger "orkest_broadcast_focus_state"
+  after insert or update or delete on public.focus_state
+  for each row execute function public.orkest_broadcast_change();
+
+drop trigger if exists "orkest_broadcast_lists" on public.lists;
+create trigger "orkest_broadcast_lists"
+  after insert or update or delete on public.lists
+  for each row execute function public.orkest_broadcast_change();
+
+drop trigger if exists "orkest_broadcast_app_settings" on public.app_settings;
+create trigger "orkest_broadcast_app_settings"
+  after insert or update or delete on public.app_settings
+  for each row execute function public.orkest_broadcast_change();
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- The sweep: three weekly jobs, and the floor under everything above

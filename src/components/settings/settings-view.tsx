@@ -358,7 +358,9 @@ export function SettingsView({
 
   const syncStatusLabel = sync.error
     ? t("sync.status.error", { error: sync.error })
-    : t(SYNC_STATUS_KEYS[sync.status]);
+    : sync.channelError
+      ? t("sync.status.channel", { state: sync.channelError })
+      : t(SYNC_STATUS_KEYS[sync.status]);
 
   /**
    * The mobile hint with its `{url}` token cut out, so the address can be

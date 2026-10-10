@@ -12,11 +12,14 @@
  * this page is the whole of the identity, and it only ever reaches the one
  * data space it names.
  *
- * Like the desktop, the page polls rather than subscribes — 10 s here, and
- * once more the moment the tab comes back to the front — because the
- * Realtime socket cannot present the header the policies demand. The poll is
- * cheap by construction: it re-reads the newest stretch and the row count,
- * and takes the whole table again only when one of those two has moved. The
+ * The fast path is a Realtime knock, not the clock: a trigger in
+ * `supabase-schema.sql` rings the `sync:<code>` topic on every write, and the
+ * page — while it is open — runs a forced pull the moment it hears one. The
+ * socket is fire-and-forget and a phone tab sleeps in the background, so the
+ * poll stays on as the healer, slowed to a minute, plus once more the moment
+ * the tab comes back to the front. Each poll is cheap by construction: it
+ * re-reads the newest stretch and the row count, and takes the whole table
+ * again only when one of those two has moved. The
  * table it reads is a rolling two-day window rather than a history — the
  * desktop keeps the archive and prunes what the phone no longer needs — so a
  * pull here stays small however long the log grows.
@@ -33,7 +36,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { Check, ChevronDown, Settings } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./credentials";
 
 /* ── The shape of the log, as the phone needs it ────────────────────────── */
@@ -214,7 +217,7 @@ const STRINGS = {
     connect: "连接",
     connecting: "连接中…",
     reconfigure: "更改同步码",
-    stateUseful: "我在做有用的事。",
+    stateUseful: "我在做有意义的事。",
     stateIdle: "我在休息。",
     today: "今日合计",
     start: "开始专注",
@@ -244,7 +247,7 @@ const STRINGS = {
     connect: "Connect",
     connecting: "Connecting…",
     reconfigure: "Change sync code",
-    stateUseful: "I’m doing something useful.",
+    stateUseful: "I’m doing something meaningful.",
     stateIdle: "I’m taking a break.",
     today: "Today",
     start: "Start focusing",
@@ -532,9 +535,6 @@ function Dropdown({
                   }
                   onClick={() => pick(choice.value)}
                 >
-                  <span className="menu-check" aria-hidden="true">
-                    {selected && <Check size={16} strokeWidth={3} />}
-                  </span>
                   <span className="menu-label">{choice.label}</span>
                 </div>
               );
@@ -548,7 +548,10 @@ function Dropdown({
 
 /* ── The app ──────────────────────────────────────────────────────────── */
 
-const POLL_MS = 10_000;
+/** The healer — one pull a minute. Realtime carries the fast path (see the
+    trigger in `supabase-schema.sql`); this slow tick is what catches a knock
+    the socket dropped while the tab slept. */
+const POLL_MS = 60_000;
 /** The floor the desktop ships with, used only until the real rules arrive. */
 const DEFAULT_MIN_MS = 5 * 60_000;
 const DEFAULT_MAX_MS = 8 * 3_600_000;
@@ -686,9 +689,9 @@ export function App() {
     seenRef.current = null;
   }, [client]);
 
-  /* Poll every 10 s, once immediately, and once more whenever the tab returns
-     to the front — the phone is looked at in bursts, and the pull that
-     matters is the one that happens when someone is there to see it. */
+  /* Poll every minute, once immediately, and once more whenever the tab
+     returns to the front — the phone is looked at in bursts, and the pull
+     that matters is the one that happens when someone is there to see it. */
   const clientRef = useRef(client);
   clientRef.current = client;
 
@@ -712,6 +715,34 @@ export function App() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [client, pull]);
+
+  /* The knock — Realtime broadcast from the database (see the trigger in
+     `supabase-schema.sql`). Every write the space receives rings the topic
+     this code owns, and a knock wakes a forced pull at once: the probe reads
+     only the count and the tail, and an edit to any other row — a re-filing,
+     a reschedule — moves neither. A knock that arrives while the tab is
+     hidden is skipped, like a tick; the visibility change and the slow poll
+     catch up on what it was announcing. The echo of this page's own write is
+     a knock too, and is welcome: the forced pull it wakes replaces the
+     optimistic span with the row that actually landed. */
+  useEffect(() => {
+    if (client === null || config === null) return;
+    const target = client;
+    const channel = target
+      .channel(`sync:${config.code}`)
+      .on("broadcast", { event: "changed" }, () => {
+        if (document.hidden) return;
+        void pull(target, true)
+          .then(() => setError(null))
+          .catch((e: unknown) => setError(String((e as Error)?.message ?? e)));
+      });
+    channel.subscribe((status) => {
+      if (status !== "SUBSCRIBED") console.warn("focus sync channel:", status);
+    });
+    return () => {
+      void target.removeChannel(channel);
+    };
+  }, [client, config, pull]);
 
   /* The list the running session wears comes from the log; the choice made
      while idle is remembered for the next start. */
@@ -911,13 +942,8 @@ export function App() {
     <div className="page">
       <header className="header">
         <h1>{APP_NAME}</h1>
-        <button
-          className="ghost"
-          onClick={() => setSetupOpen(true)}
-          aria-label={strings.reconfigure}
-          title={strings.reconfigure}
-        >
-          <Settings size={18} aria-hidden="true" />
+        <button className="ghost" onClick={() => setSetupOpen(true)}>
+          {strings.settingsTitle}
         </button>
       </header>
 

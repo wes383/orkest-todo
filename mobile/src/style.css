@@ -179,7 +179,7 @@ body {
 .page {
   max-width: 440px;
   margin: 0 auto;
-  padding: max(16px, env(safe-area-inset-top)) 20px
+  padding: max(28px, env(safe-area-inset-top)) 20px
     max(24px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
@@ -207,8 +207,8 @@ body {
   line-height: 1.2;
 }
 
-/* A quiet icon button on the page's own ground — the shape the desktop's
-   `ghost` button takes, minus the icon component. */
+/* A quiet pill button on the page's own ground — the shape the desktop's
+   `ghost` button takes. */
 .ghost {
   display: inline-flex;
   align-items: center;
@@ -239,6 +239,24 @@ body {
 }
 
 .ghost:active {
+  background: var(--hover-bg-strong);
+}
+
+/* The header's reconfigure pill: the ghost given a resting ground and full
+   foreground so the word reads as a button at a glance, not a caption. */
+.header .ghost {
+  padding: 0 14px;
+  background: var(--hover-bg);
+  color: var(--foreground);
+}
+
+@media (hover: hover) {
+  .header .ghost:hover {
+    background: var(--hover-bg-strong);
+  }
+}
+
+.header .ghost:active {
   background: var(--hover-bg-strong);
 }
 
@@ -491,7 +509,7 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 12px 12px 12px 36px;
+  padding: 12px;
   border-radius: var(--radius-md);
   font-size: var(--text-base);
   cursor: pointer;
@@ -524,17 +542,6 @@ body {
 
 .menu-item.is-selected {
   font-weight: 500;
-}
-
-.menu-check {
-  position: absolute;
-  left: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
 }
 
 /* A listed list can be named anything, so it wraps rather than vanishing off
@@ -654,13 +661,28 @@ body {
 /* The dismissal wears the primary's own box — same width, same height, same
    type — because its hover wash used to be a small pill floating in the middle
    of the column, which read as a different kind of thing rather than as the
-   second of two buttons. What it keeps is its quiet ground: no fill until it
-   is hovered. */
+   second of two buttons. It sits on a quiet fill — the hover wash as its rest —
+   so it reads as a button before it is touched; hover deepens it a step, and
+   the press arrives at the same place. */
 .setup .ghost {
   width: 100%;
   height: 56px;
   margin-top: 2px;
   font-size: var(--text-base);
+  background: var(--hover-bg);
+  color: var(--foreground);
+}
+
+@media (hover: hover) {
+  .setup .ghost:hover {
+    background: var(--hover-bg-strong);
+  }
+}
+
+/* Same specificity tie, same reason: the fill this button rests on would
+   out-order the generic press rule above, so the press is restated here. */
+.setup .ghost:active {
+  background: var(--hover-bg-strong);
 }
 
 .input {
