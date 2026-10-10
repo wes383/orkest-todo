@@ -552,6 +552,15 @@ function Dropdown({
     trigger in `supabase-schema.sql`); this slow tick is what catches a knock
     the socket dropped while the tab slept. */
 const POLL_MS = 60_000;
+/** When the socket is unusable — realtime is blocked on some networks — the
+    minute tick is the only heartbeat, and a full minute felt dead on the
+    phone back when realtime did not exist at all. So a dead or unproven
+    socket polls at the old ten-second cadence; SUBSCRIBED relaxes it back to
+    the healer's pace. */
+const FALLBACK_POLL_MS = 10_000;
+/** The floor between touch-triggered pulls: taps are the heartbeat when a
+    browser freezes the timer, but they should not become a request storm. */
+const NUDGE_MS = 15_000;
 /** The floor the desktop ships with, used only until the real rules arrive. */
 const DEFAULT_MIN_MS = 5 * 60_000;
 const DEFAULT_MAX_MS = 8 * 3_600_000;
@@ -691,9 +700,23 @@ export function App() {
 
   /* Poll every minute, once immediately, and once more whenever the tab
      returns to the front — the phone is looked at in bursts, and the pull
-     that matters is the one that happens when someone is there to see it. */
+     that matters is the one that happens when someone is there to see it.
+
+     The minute tick alone, though, is not something every browser honors:
+     several mobile browsers — Chinese ones loudest of all — freeze a page's
+     timers after a stretch of no interaction even while the page is on
+     screen, and when the socket is unusable (realtime blocked on many
+     networks here) that tick is the only heartbeat left. So the page also
+     pulls on touch: a glance at the phone is itself a request to know. The
+     throttle keeps a restless thumb from turning into a request storm. */
   const clientRef = useRef(client);
   clientRef.current = client;
+
+  /* Whether the knock channel is SUBSCRIBED. It picks the poll's tempo: the
+     socket's fast path when it lives, the old ten-second cadence when it
+     doesn't — a page on a network where realtime is blocked should never
+     wait a full minute to learn what the desk did. */
+  const [knockOk, setKnockOk] = useState(false);
 
   useEffect(() => {
     if (client === null) return;
@@ -705,16 +728,29 @@ export function App() {
         .catch((e: unknown) => setError(String((e as Error)?.message ?? e)));
     };
     tick();
-    const id = window.setInterval(tick, POLL_MS);
+    const id = window.setInterval(tick, knockOk ? POLL_MS : FALLBACK_POLL_MS);
     const onVisible = () => {
       if (!document.hidden) tick();
     };
+    let lastNudge = 0;
+    const onNudge = () => {
+      const at = Date.now();
+      if (at - lastNudge < NUDGE_MS) return;
+      lastNudge = at;
+      tick();
+    };
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pointerdown", onNudge);
+    window.addEventListener("keydown", onNudge);
+    document.addEventListener("resume", onNudge);
     return () => {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pointerdown", onNudge);
+      window.removeEventListener("keydown", onNudge);
+      document.removeEventListener("resume", onNudge);
     };
-  }, [client, pull]);
+  }, [client, pull, knockOk]);
 
   /* The knock — Realtime broadcast from the database (see the trigger in
      `supabase-schema.sql`). Every write the space receives rings the topic
@@ -737,9 +773,12 @@ export function App() {
           .catch((e: unknown) => setError(String((e as Error)?.message ?? e)));
       });
     channel.subscribe((status) => {
+      setKnockOk(status === "SUBSCRIBED");
       if (status !== "SUBSCRIBED") console.warn("focus sync channel:", status);
     });
     return () => {
+      // The next space starts unproven: poll fast until its channel answers.
+      setKnockOk(false);
       void target.removeChannel(channel);
     };
   }, [client, config, pull]);
