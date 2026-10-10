@@ -21,7 +21,10 @@ export type SelectDensity = Density;
 const SelectDensityContext = React.createContext<SelectDensity>("default");
 
 const selectTriggerVariants = cva(
-  "flex w-full items-center justify-between border border-border bg-surface text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-border-strong disabled:cursor-not-allowed disabled:opacity-50 transition-colors duration-base [&>span]:line-clamp-1 [&>span]:text-left",
+  /* The strong border is a *keyboard* cue: Radix hands focus back to the
+     trigger after every selection, and a plain `focus:` would repaint the
+     border on that restored focus — a ring mouse users never asked for. */
+  "flex w-full items-center justify-between border border-border bg-surface text-foreground placeholder:text-foreground-subtle focus:outline-none focus-visible:border-border-strong disabled:cursor-not-allowed disabled:opacity-50 transition-colors duration-base [&>span]:line-clamp-1 [&>span]:text-left",
   {
     variants: {
       size: {
@@ -134,10 +137,13 @@ export interface SelectContentProps
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   SelectContentProps
->(({ className, density, children, position = "popper", nativeScroll = false, ...props }, ref) => {
+>(({ className, density, children, position = "popper", nativeScroll = false, onCloseAutoFocus, onPointerDown, ...props }, ref) => {
   const globalDensity = useDensity();
   const resolvedDensity = density ?? globalDensity;
   const compact = resolvedDensity === "compact";
+  /* A pointerdown anywhere in the panel — an item, its scrollbar — marks the
+     close that follows as a mouse close. */
+  const pointerDownRef = React.useRef(false);
   return (
     <SelectPrimitive.Portal>
       <SelectDensityContext.Provider value={resolvedDensity}>
@@ -159,6 +165,26 @@ const SelectContent = React.forwardRef<
           )}
           position={position}
           sideOffset={4}
+          onPointerDownCapture={(event) => {
+            pointerDownRef.current = true;
+            onPointerDown?.(event);
+          }}
+          onCloseAutoFocus={(event) => {
+            /*
+             * Radix hands focus back to the trigger on close, and Chromium
+             * marks that restored focus `:focus-visible` — so a mouse
+             * selection painted the app's global focus outline as a ring
+             * around the trigger it had just left. A pointer close skips the
+             * restore (the pointer is its own continuity); a keyboard close
+             * keeps it, since that outline is the keyboard's indicator.
+             * `preventDefault` stops Radix's own trigger focus — its
+             * composeEventHandlers checks the flag.
+             */
+            const pointerClosed = pointerDownRef.current;
+            pointerDownRef.current = false;
+            if (pointerClosed) event.preventDefault();
+            onCloseAutoFocus?.(event);
+          }}
           {...props}
         >
           {!nativeScroll && <SelectScrollUpButton />}

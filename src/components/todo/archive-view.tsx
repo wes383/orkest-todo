@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { GoalMarker } from "@/components/todo/goal-marker";
 import { useI18n } from "@/lib/i18n";
-import { formatDate, todayISO } from "@/lib/date";
+import { formatDate, formatHM, todayISO } from "@/lib/date";
 import {
   PRIORITY_META,
   paletteVar,
@@ -220,6 +220,11 @@ export function ArchiveView({
                                 }
                               >
                                 {formatDate(todo.dueDate, language)}
+                                {/* A time only ever rides a date, so this
+                                    sits inside the date's span — the record
+                                    says "10月10日 17:00", not a bare hour. */}
+                                {todo.dueTime !== null &&
+                                  ` ${formatHM(todo.dueTime, language)}`}
                               </span>
                             )}
                             <span

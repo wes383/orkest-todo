@@ -197,7 +197,15 @@ export function TodoEditorDialog({
     setSubtaskInput("");
   };
 
-  const canSubmit = form.title.trim().length > 0;
+  /**
+   * A 每周的几天 rule with no day ticked can never produce its next
+   * occurrence (`nextDueDate` answers null for an empty `days`), so the form
+   * refuses to save until one is chosen — the hint under the toggles says so.
+   */
+  const weekdaysIncomplete =
+    form.recur?.kind === "weekdays" && form.recur.days.length === 0;
+
+  const canSubmit = form.title.trim().length > 0 && !weekdaysIncomplete;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -577,6 +585,12 @@ export function TodoEditorDialog({
                     );
                   })}
                 </div>
+              )}
+
+              {form.recur?.kind === "weekdays" && weekdaysIncomplete && (
+                <Hint className="mt-2 text-red-fg">
+                  {t("recur.weekdaysEmpty")}
+                </Hint>
               )}
 
               {/*

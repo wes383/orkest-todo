@@ -312,7 +312,12 @@ function TaskCard({
           className={cn(
             ghostIcon,
             "h-7 w-7",
-            todo.starred && "text-[var(--amber)]"
+            /* --amber doesn't exist — the token is --color-yellow. An
+               undefined var silently fell back to the foreground color,
+               filling the star near-black. The ! keeps ghostIcon's
+               hover:text-foreground from repainting a starred star. */
+            todo.starred &&
+              "text-[var(--color-yellow)] hover:!text-[var(--color-yellow)]"
           )}
         >
           <Icon
@@ -719,6 +724,10 @@ export function CalendarView({
       sidebar's rail — on screen, and not persisted: the calendar is read at
       a glance, and most glances want the work that is left. */
   const [showDone, setShowDone] = useState(true);
+  /** The list the grid is narrowed to — `"all"` is every list. Like the
+      隐藏已完成 beside it, a reading choice of the moment: on screen, and
+      not persisted. */
+  const [listFilter, setListFilter] = useState<string>("all");
 
   /* The id mid-drag, kept in state because `dataTransfer` is unreadable
      during `dragover` — the drop zones need to know a drag is theirs to
@@ -736,21 +745,42 @@ export function CalendarView({
     return map;
   }, [lists]);
 
+  /** The filter dropdown's options: active lists only. The calendar is fed
+      `activeTodos` — an archived list's tasks are not here to show — and an
+      option that could only ever produce an empty grid would be a trap. */
+  const filterLists = useMemo(
+    () => lists.filter((list) => list.archivedAt === null),
+    [lists]
+  );
+  /** The filter in force: a chosen list that has since been archived (its
+      option is gone from the dropdown) falls back to every list rather than
+      leaving the trigger nameless and the grid blank. */
+  const effectiveListFilter =
+    listFilter === "all" || filterLists.some((list) => list.id === listFilter)
+      ? listFilter
+      : "all";
+
   /** Every dated task, bucketed by its day. Undated tasks are not the
       calendar's business — see the module comment — and neither are finished
-      ones while 隐藏已完成 is on. */
+      ones while 隐藏已完成 is on, nor another list's while the filter names
+      one. */
   const byDay = useMemo(() => {
     const map = new Map<string, Todo[]>();
     for (const todo of todos) {
       if (!todo.dueDate) continue;
       if (!showDone && todo.done) continue;
+      if (
+        effectiveListFilter !== "all" &&
+        todo.listId !== effectiveListFilter
+      )
+        continue;
       const bucket = map.get(todo.dueDate);
       if (bucket) bucket.push(todo);
       else map.set(todo.dueDate, [todo]);
     }
     for (const bucket of map.values()) bucket.sort(sortForDay);
     return map;
-  }, [todos, showDone]);
+  }, [todos, showDone, effectiveListFilter]);
 
   const weeks = useMemo(
     () => gridWeeks(month, weekStartDow),
@@ -1129,6 +1159,36 @@ export function CalendarView({
           >
             {t(showDone ? "calendar.hideDone" : "calendar.showDone")}
           </Button>
+          {/* 按清单筛选 — the row's last control, the corner the eye reaches
+              last. The trigger reads the chosen list's own colour the way a
+              chip does, so a filtered calendar and the tasks it shows wear
+              the same mark. */}
+          <Select
+            value={effectiveListFilter}
+            onValueChange={setListFilter}
+          >
+            <SelectTrigger
+              aria-label={t("calendar.listFilter")}
+              className="h-9 w-36 shrink-0 text-sm"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("calendar.allLists")}</SelectItem>
+              {filterLists.map((list) => (
+                <SelectItem key={list.id} value={list.id}>
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: paletteVar(list.color) }}
+                    />
+                    <span className="min-w-0 truncate">{list.name}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Weekday header. */}

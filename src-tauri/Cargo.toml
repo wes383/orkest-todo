@@ -1,6 +1,6 @@
 [package]
 name = "orkest-todo"
-version = "0.12.0"
+version = "0.13.0"
 description = "Orkest Todo"
 authors = ["Orkest Todo"]
 edition = "2021"

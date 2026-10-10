@@ -85,7 +85,6 @@ import type { QuickInput } from "@/lib/quick-input";
 import {
   DEFAULT_FILTERS,
   collectTags,
-  computeStats,
   effectiveStatus,
   groupByDue,
   listCounts as computeListCounts,
@@ -278,7 +277,7 @@ export default function App() {
   /* ── Derived data ────────────────────────────────────────── */
 
   /*
-   * `stats`, `counts` and `visible` all classify against the current date
+   * `counts` and `visible` both classify against the current date
    * (`todayISO()` / `daysFromToday` inside `selectors.ts`) — they are the
    * 今天 / 已逾期 / 即将到期 buckets. Reading the clock inside a memo means the
    * result is only as fresh as the last dependency change, so `today` is listed
@@ -315,7 +314,6 @@ export default function App() {
     [todos, activeLists]
   );
 
-  const stats = useMemo(() => computeStats(activeTodos), [activeTodos, today]);
   const counts = useMemo(() => viewCounts(activeTodos), [activeTodos, today]);
   const listCounts = useMemo(() => computeListCounts(activeTodos), [activeTodos]);
   const tags = useMemo(() => collectTags(activeTodos, language), [activeTodos, language]);
@@ -357,27 +355,20 @@ export default function App() {
    * Whether the list on screen is made up entirely of finished tasks — reached
    * either through the sidebar's 已完成 view or, in 全部任务, through the status
    * tab. "清理已完成" is only offered then: it is a destructive action, and it
-   * should act on what the user is actually looking at.
+   * is scoped to the rows on screen, so in a list's 已完成 view it takes that
+   * list's finished tasks alone, not every list's.
    */
   const canClearCompleted =
-    effectiveStatus(filters) === "completed" &&
-    stats.done > 0 &&
-    visible.length > 0;
+    effectiveStatus(filters) === "completed" && visible.length > 0;
 
   /**
    * True when the list foot would print the same number twice.
    *
-   * In the plain 已完成 scope the count line and the clear button's badge are
-   * the same fact: every finished task is on screen, so `visible.length` and
-   * `stats.done` agree. Only one of them should be printed.
-   *
-   * They diverge the moment another filter narrows the list — a list, a tag, a
-   * search — because the button always acts on *every* finished task while the
-   * count describes the rows on screen. In that case both are shown, since they
-   * are no longer saying the same thing.
+   * The clear button's badge counts the rows on screen — the very set the
+   * action removes — which is the same fact the count line states. Whenever
+   * the button is offered, the bare count steps aside.
    */
-  const footCountIsRepeated =
-    canClearCompleted && visible.length === stats.done;
+  const footCountIsRepeated = canClearCompleted;
 
   /** List a brand-new task should land in. Archived lists are skipped: a new
       task cannot be filed into an archive (the editor's dropdown offers active
@@ -832,14 +823,18 @@ export default function App() {
   );
 
   const handleClearCompleted = useCallback(() => {
-    const removed = clearCompleted();
+    // The sweep is keyed to the rows on screen: in a list's 已完成 view it
+    // takes that list's finished tasks, under a search only the matches —
+    // never finished work from lists the user is not looking at.
+    const visibleIds = new Set(visible.map((t) => t.id));
+    const removed = clearCompleted((t) => visibleIds.has(t.id));
     setConfirmClearOpen(false);
     if (removed.length === 0) return;
     toast.success(t("toast.cleared", { n: removed.length }), {
       description: t("toast.clearedBody"),
       action: { label: t("common.undo"), onClick: () => restoreTodos(removed) },
     });
-  }, [clearCompleted, restoreTodos, t]);
+  }, [clearCompleted, visible, restoreTodos, t]);
 
   const handleListSubmit = useCallback(
     (name: string, color: PaletteName, goal: GoalConfig | null) => {
@@ -1407,9 +1402,10 @@ export default function App() {
 
                   {/*
                    * Clearing is offered only here, where every row above it is
-                   * something the action will actually remove. Its badge counts
-                   * finished tasks across the whole store, not the visible
-                   * rows, because that is what the action deletes.
+                   * something the action will actually remove — and the badge
+                   * counts those very rows. In a list's 已完成 view that is the
+                   * list's finished tasks; elsewhere, whatever the filters
+                   * have left on screen.
                    */}
                   {canClearCompleted && (
                     <Button
@@ -1420,7 +1416,7 @@ export default function App() {
                       <Icon icon={Trash2} size="sm" />
                       {t("app.clearCompleted")}
                       <span className="font-mono text-xs tabular-nums text-foreground-subtle">
-                        {stats.done}
+                        {visible.length}
                       </span>
                     </Button>
                   )}
@@ -1474,7 +1470,7 @@ export default function App() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t("app.clearCompletedTitle", { n: stats.done })}
+              {t("app.clearCompletedTitle", { n: visible.length })}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t("app.clearCompletedBody")}

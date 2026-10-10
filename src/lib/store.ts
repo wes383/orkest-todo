@@ -549,11 +549,24 @@ export function useTodoStore(lang: Language) {
     [patchTodos]
   );
 
-  const clearCompleted = useCallback((): Todo[] => {
-    const removed = state.todos.filter((t) => t.done);
-    patchTodos((todos) => todos.filter((t) => !t.done));
-    return removed;
-  }, [patchTodos, state.todos]);
+  /**
+   * Removes finished tasks and returns them for undo. Without an argument the
+   * sweep takes every finished task in the store; a predicate narrows it to
+   * the tasks the caller means — App keys it to the rows on screen, so
+   * 清理已完成 inside a list (or under a search) only takes what is visible.
+   */
+  const clearCompleted = useCallback(
+    (predicate?: (t: Todo) => boolean): Todo[] => {
+      const removed = state.todos.filter(
+        (t) => t.done && (predicate?.(t) ?? true)
+      );
+      patchTodos((todos) =>
+        todos.filter((t) => !(t.done && (predicate?.(t) ?? true)))
+      );
+      return removed;
+    },
+    [patchTodos, state.todos]
+  );
 
   /* ── Lists ───────────────────────────────────────────────── */
 
